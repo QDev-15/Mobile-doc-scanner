@@ -17,20 +17,16 @@ public static class MauiProgram
 		Perf.Sink = line => Android.Util.Log.Info("DocScanPerf", line);
 		Perf.Log("startup: CreateMauiApp");
 
-		// Ads: Debug always uses Google's own test ad units, whatever AdsConfig says, so development never
-		// risks a policy strike from clicking a real ad. Release does too, UNLESS AdsConfig.HasRealIds --
-		// otherwise a Release build made before AdMob is set up would request the still-placeholder IDs,
-		// which AdMob rejects, and show no ad at all instead of a working test one.
-#if DEBUG
-		Plugin.AdMob.Configuration.AdConfig.UseTestAdUnitIds = true;
-#else
-		Plugin.AdMob.Configuration.AdConfig.UseTestAdUnitIds = !AdsConfig.HasRealIds;
-#endif
+		// Ads: test vs real is decided once, in AdsConfig.UseTestAds (Debug = test; Release = real unless the
+		// real IDs are placeholders). Every ad request below uses AdsConfig.BannerId / InterstitialId, which
+		// already resolve to the right pair, so the plugin flag here only mirrors that decision.
+		Plugin.AdMob.Configuration.AdConfig.UseTestAdUnitIds = AdsConfig.UseTestAds;
+		Perf.Log($"ads: {(AdsConfig.UseTestAds ? "TEST" : "REAL")} ad units, {AdsConfig.TestDeviceIds.Length} test device(s)");
 
 		var builder = MauiApp.CreateBuilder();
 		builder
 			.UseMauiApp<App>()
-			.UseAdMob(androidDefaultBannerAdUnitId: AdsConfig.BannerAdUnitId, androidDefaultInterstitialAdUnitId: AdsConfig.InterstitialAdUnitId)
+			.UseAdMob(androidDefaultBannerAdUnitId: AdsConfig.BannerId, androidDefaultInterstitialAdUnitId: AdsConfig.InterstitialId)
 			.ConfigureFonts(fonts =>
 			{
 				fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");

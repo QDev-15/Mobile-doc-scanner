@@ -103,6 +103,16 @@
                     <Label Grid.Column="2" Text="{x:Static views:Icons.ChevronRight}" FontFamily="Icons" FontSize="22" VerticalOptions="Center"
                            TextColor="{AppThemeBinding Light={StaticResource Muted}, Dark={StaticResource MutedDark}}" />
                 </Grid>
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" Padding="0,14" IsVisible="{Binding ShowPrivacyOptions}">
+                    <Grid.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding OpenPrivacyOptionsCommand}" />
+                    </Grid.GestureRecognizers>
+                    <Label Text="{x:Static views:Icons.Info}" FontFamily="Icons" FontSize="22" VerticalOptions="Center"
+                           TextColor="{StaticResource Primary}" />
+                    <Label Grid.Column="1" Text="Tuỳ chọn quyền riêng tư (quảng cáo)" Style="{StaticResource Name}" />
+                    <Label Grid.Column="2" Text="{x:Static views:Icons.ChevronRight}" FontFamily="Icons" FontSize="22" VerticalOptions="Center"
+                           TextColor="{AppThemeBinding Light={StaticResource Muted}, Dark={StaticResource MutedDark}}" />
+                </Grid>
             </VerticalStackLayout>
         </VerticalStackLayout>
     </ScrollView>

@@ -3,6 +3,7 @@ using Android.Views;
 using DocScanner.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Maui.Handlers;
+using Plugin.AdMob.Services;
 
 namespace DocScanner.Views;
 
@@ -44,12 +45,34 @@ internal sealed class AdBannerSurfaceHandler : ViewHandler<AdBannerSurface, AdVi
 		}
 
 		IAdsService? ads = IPlatformApplication.Current?.Services.GetService<IAdsService>();
-		string adUnitId = Plugin.AdMob.Configuration.AdConfig.UseTestAdUnitIds
-			? "ca-app-pub-3940256099942544/6300978111" // Google's published test banner id (developers.google.com/admob/android/test-ads)
-			: AdsConfig.BannerAdUnitId;
-		_shared = new AdView(Context) { AdUnitId = adUnitId, AdSize = AdSize.Banner, AdListener = new LoadListener(ads) };
-		if (ads?.ShowAds != false) _shared.LoadAd(new AdRequest.Builder().Build()); // already Pro at startup: skip the request entirely
+		if (AdsConfig.TestDeviceIds.Length > 0)
+		{
+			MobileAds.RequestConfiguration = new RequestConfiguration.Builder().SetTestDeviceIds(AdsConfig.TestDeviceIds).Build();
+		}
+		_shared = new AdView(Context) { AdUnitId = AdsConfig.BannerId, AdSize = AdSize.Banner, AdListener = new LoadListener(ads) };
+		if (ads?.ShowAds != false) LoadWhenConsented(_shared, ads); // already Pro at startup: skip the request entirely
 		return _shared;
+	}
+
+	/// <summary>Never requests before the UMP consent flow says ads may be requested (in EEA/UK the form is still on screen
+	/// at startup and a request sent now would be dropped, leaving the banner blank until the next refresh). Otherwise loads
+	/// once right away; if not yet allowed, loads the first time consent info / the form settles into "can request".</summary>
+	private static void LoadWhenConsented(AdView view, IAdsService? ads)
+	{
+		IAdConsentService? consent = IPlatformApplication.Current?.Services.GetService<IAdConsentService>();
+		void Load() => view.LoadAd(new AdRequest.Builder().Build());
+		DocScanner.Core.Perf.Log($"ads: banner consent={(consent is null ? "none" : consent.CanRequestAds().ToString())}");
+		if (consent is null || consent.CanRequestAds()) { Load(); return; }
+
+		bool loaded = false;
+		void TryLoad()
+		{
+			if (loaded || !consent.CanRequestAds() || ads?.ShowAds == false) return;
+			loaded = true;
+			MainThread.BeginInvokeOnMainThread(Load);
+		}
+		consent.OnConsentInfoUpdated += (_, _) => TryLoad();
+		consent.OnConsentFormDismissed += (_, _) => TryLoad();
 	}
 
 	/// <summary>Never tears down the shared AdView just because the page hosting it right now is going away --
@@ -60,9 +83,9 @@ internal sealed class AdBannerSurfaceHandler : ViewHandler<AdBannerSurface, AdVi
 
 	private sealed class LoadListener(IAdsService? ads) : AdListener
 	{
-		public override void OnAdLoaded() => ads?.ReportBannerLoaded(true);
+		public override void OnAdLoaded() { DocScanner.Core.Perf.Log("ads: banner loaded"); ads?.ReportBannerLoaded(true); }
 
 		// No creative to show: first load with no network, a periodic refresh that came back empty, ...
-		public override void OnAdFailedToLoad(LoadAdError error) => ads?.ReportBannerLoaded(false);
+		public override void OnAdFailedToLoad(LoadAdError error) { DocScanner.Core.Perf.Log($"ads: banner failed {error.Code} {error.Message}"); ads?.ReportBannerLoaded(false); }
 	}
 }

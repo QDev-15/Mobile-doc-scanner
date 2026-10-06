@@ -35,7 +35,7 @@
 		     was consumed by the Internal testing upload, so Play rejects it on any other track/release ("Version
 		     code 1 has already been used"): bumped to 2, versionName stays 1.0 (still the first public version). -->
 		<ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
-		<ApplicationVersion>2</ApplicationVersion>
+		<ApplicationVersion>3</ApplicationVersion>
 
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">26.0</SupportedOSPlatformVersion>
 
@@ -62,6 +62,12 @@
 	<PropertyGroup Condition="'$(Configuration)' == 'Release'">
 		<AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
 		<EnableLLVM>true</EnableLLVM>
+	</PropertyGroup>
+
+	<!-- Tester build: `dotnet publish ... -p:TestAds=true` forces Google's test ad units (AdsConfig.UseTestAds) even in Release.
+	     Never pass it for the public/production build. -->
+	<PropertyGroup Condition="'$(TestAds)' == 'true'">
+		<DefineConstants>$(DefineConstants);TEST_ADS</DefineConstants>
 	</PropertyGroup>
 
 	<!-- Release signing (Google Play upload key): keystore + passwords are NOT in this file (this file is

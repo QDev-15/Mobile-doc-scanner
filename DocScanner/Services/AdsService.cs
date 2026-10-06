@@ -86,7 +86,7 @@ public sealed class AdsService : IAdsService
 
     private void PrepareInterstitial()
     {
-        try { _interstitial.PrepareAd(AdsConfig.InterstitialAdUnitId); }
+        try { _interstitial.PrepareAd(AdsConfig.InterstitialId); }
         catch (Exception ex) { Perf.Log($"ads: interstitial preload failed: {ex.Message}"); }
     }
 }

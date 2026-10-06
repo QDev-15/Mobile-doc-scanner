@@ -2,13 +2,21 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DocScanner.Core;
 using DocScanner.Core.Licensing;
+using Plugin.AdMob.Services;
 
 namespace DocScanner.ViewModels;
 
 /// <summary>Every setting of the app in one place (each one is stored the moment it changes, in the same place the
 /// screens read it from), the storage used, and the app information.</summary>
-public partial class SettingsViewModel(DocumentStore store, ExportLibrary exportsLibrary, ILicenseService license) : ObservableObject
+public partial class SettingsViewModel(DocumentStore store, ExportLibrary exportsLibrary, ILicenseService license, IAdConsentService consent) : ObservableObject
 {
+	/// <summary>Google UMP requires an always-reachable "privacy options" entry in regions where consent is required (EEA/UK...);
+	/// elsewhere <see cref="IAdConsentService.IsPrivacyOptionsRequired"/> is false and the row stays hidden.</summary>
+	public bool ShowPrivacyOptions => consent.IsPrivacyOptionsRequired();
+
+	[RelayCommand]
+	private void OpenPrivacyOptions() => consent.ShowPrivacyOptionsForm();
+
 	// Keys shared with the screens that use them.
 	private const string CameraAutoKey = "camera_auto_capture", OpenModeKey = "document_open_mode", PdfQualityKey = "pdf_quality";
 
