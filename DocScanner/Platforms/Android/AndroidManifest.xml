@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+	<application android:allowBackup="false" android:largeHeap="true" android:icon="@mipmap/appicon" android:roundIcon="@mipmap/appicon_round" android:supportsRtl="true"
+	             android:networkSecurityConfig="@xml/network_security_config">
+
+		<!-- AdMob (Services/AdsService.cs). ${admobAppId} comes from DocScanner.csproj's
+		     AndroidManifestPlaceholders; see the TODO there before a Play release build. -->
+		<meta-data android:name="com.google.android.gms.ads.APPLICATION_ID"
+		           android:value="${admobAppId}" />
+		<activity android:name="com.google.android.gms.ads.AdActivity"
+		          android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|uiMode|screenSize|smallestScreenSize"
+		          android:theme="@android:style/Theme.Translucent" android:exported="false" />
+	</application>
+
+	<!-- Camera capture. Gallery import goes through the system photo picker, which needs no storage permission. -->
+	<uses-permission android:name="android.permission.CAMERA" />
+
+	<!-- Google Play Billing (bản Pro), AdMob (quảng cáo bản miễn phí), and Play In-App Update (bắt buộc cập
+	     nhật lên bản mới nhất, Services/AndroidAppUpdate.cs): pages and photos themselves never leave the
+	     phone. The update check/download itself is entirely Play's own backend, not a server of ours. -->
+	<uses-permission android:name="android.permission.INTERNET" />
+	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+	<uses-feature android:name="android.hardware.camera" android:required="false" />
+	<uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+
+	<!-- Android 11+ package visibility: lets MediaPicker find the system camera app. -->
+	<queries>
+		<intent>
+			<action android:name="android.media.action.IMAGE_CAPTURE" />
+		</intent>
+	</queries>
+</manifest>

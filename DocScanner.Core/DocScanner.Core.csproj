@@ -1,0 +1,18 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Platform-neutral logic of the mobile app (document model, storage, import pipeline).
+       No MAUI / Android references, so it is unit-testable on the PC. Platform work (image
+       decoding, pickers) is reached through interfaces implemented in the DocScanner app. -->
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>DocScanner.Core</RootNamespace>
+    <!-- Optimized even in Debug (see ImageCore.Shared.csproj): the render / preview pipeline lives here. -->
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DocScanner.Shared\DocScanner.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

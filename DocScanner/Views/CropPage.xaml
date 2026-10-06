@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Class="DocScanner.Views.CropPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:DocScanner.ViewModels"
+    xmlns:views="clr-namespace:DocScanner.Views"
+    x:DataType="vm:CropViewModel"
+    Title="{Binding Title}"
+    BackgroundColor="{AppThemeBinding Light={StaticResource Surface}, Dark={StaticResource SurfaceDark}}">
+
+    <ContentPage.ToolbarItems>
+        <ToolbarItem Text="Xuất PDF" Command="{Binding ExportPdfCommand}" Order="Primary">
+            <ToolbarItem.IconImageSource>
+                <FontImageSource FontFamily="Icons" Glyph="{x:Static views:Icons.Pdf}" Size="22"
+                                 Color="{AppThemeBinding Light={StaticResource OnSurface}, Dark={StaticResource OnSurfaceDark}}" />
+            </ToolbarItem.IconImageSource>
+        </ToolbarItem>
+    </ContentPage.ToolbarItems>
+
+    <Grid RowDefinitions="Auto,*,Auto,Auto">
+
+        <!-- ‹ status › : page turning like a photo viewer (a swipe that starts outside the outline does the same).
+             Fixed height: a longer message must not resize the editor while a finger is on it. -->
+        <Grid Grid.Row="0" ColumnDefinitions="44,*,44" HeightRequest="36">
+            <views:ToolButton Icon="{x:Static views:Icons.ChevronLeft}" Text="" IconSize="26" Padding="0"
+                              IsEnabled="{Binding CanGoPrevious}" Command="{Binding GoCommand}">
+                <views:ToolButton.CommandParameter><x:Int32>-1</x:Int32></views:ToolButton.CommandParameter>
+            </views:ToolButton>
+            <Label Grid.Column="1" Text="{Binding Status}" HorizontalOptions="Center" VerticalOptions="Center"
+                   MaxLines="1" LineBreakMode="TailTruncation" FontSize="12"
+                   TextColor="{AppThemeBinding Light={StaticResource Muted}, Dark={StaticResource MutedDark}}" />
+            <views:ToolButton Grid.Column="2" Icon="{x:Static views:Icons.ChevronRight}" Text="" IconSize="26" Padding="0"
+                              IsEnabled="{Binding CanGoNext}" Command="{Binding GoCommand}">
+                <views:ToolButton.CommandParameter><x:Int32>1</x:Int32></views:ToolButton.CommandParameter>
+            </views:ToolButton>
+        </Grid>
+
+        <!-- The editor draws the picture, the outline, the handles and the magnifier itself.
+             A horizontal swipe that starts outside the outline turns the page. -->
+        <views:QuadEditor Grid.Row="1"
+                          ImagePath="{Binding ImagePath}"
+                          Quad="{Binding Quad}"
+                          Bend="{Binding Bend}"
+                          Detected="{Binding Detected}"
+                          Manual="{Binding Manual}"
+                          EditedCommand="{Binding EditedCommand}"
+                          SwipeCommand="{Binding GoCommand}" />
+
+        <!-- Bottom toolbar: outline tools, then "Tiếp" to the result (filters, adjust, rotate). -->
+        <Grid Grid.Row="2" ColumnDefinitions="*,*,*,Auto" HeightRequest="64" Padding="4,0,12,0"
+              BackgroundColor="{AppThemeBinding Light={StaticResource CardBackground}, Dark={StaticResource CardBackgroundDark}}">
+            <BoxView Grid.ColumnSpan="4" HeightRequest="0.6" VerticalOptions="Start" Margin="-4,0,-12,0"
+                     Color="{AppThemeBinding Light={StaticResource Divider}, Dark={StaticResource DividerDark}}" />
+            <views:ToolButton Icon="{x:Static views:Icons.Auto}" Text="Tự động" IsEnabled="{Binding CanEdit}" Command="{Binding AutoCommand}" />
+            <views:ToolButton Grid.Column="1" Icon="{x:Static views:Icons.CropFree}" Text="Toàn ảnh" IsEnabled="{Binding CanEdit}" Command="{Binding FullImageCommand}" />
+            <views:ToolButton Grid.Column="2" Icon="{x:Static views:Icons.RotateRight}" Text="Xoay ảnh" IsEnabled="{Binding CanEdit}" Command="{Binding RotateCommand}" />
+            <Button Grid.Column="3" Text="Tiếp" IsEnabled="{Binding CanEdit}" Command="{Binding ShowResultCommand}"
+                    CornerRadius="20" HeightRequest="40" Padding="22,0" FontFamily="OpenSansSemibold" VerticalOptions="Center">
+                <Button.ImageSource>
+                    <FontImageSource FontFamily="Icons" Glyph="{x:Static views:Icons.Check}" Size="18" Color="White" />
+                </Button.ImageSource>
+            </Button>
+        </Grid>
+
+        <views:AdBannerSurface Grid.Row="3" />
+
+        <views:ExportOverlay Grid.RowSpan="4" />
+    </Grid>
+</ContentPage>

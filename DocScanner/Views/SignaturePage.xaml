@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Class="DocScanner.Views.SignaturePage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:DocScanner.ViewModels"
+    xmlns:views="clr-namespace:DocScanner.Views"
+    x:DataType="vm:SignatureViewModel"
+    Title="Chữ ký"
+    BackgroundColor="{AppThemeBinding Light={StaticResource Surface}, Dark={StaticResource SurfaceDark}}">
+
+    <ContentPage.ToolbarItems>
+        <ToolbarItem Text="Xong" Clicked="OnDone" Order="Primary">
+            <ToolbarItem.IconImageSource>
+                <FontImageSource FontFamily="Icons" Glyph="{x:Static views:Icons.Check}" Size="24"
+                                 Color="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
+            </ToolbarItem.IconImageSource>
+        </ToolbarItem>
+    </ContentPage.ToolbarItems>
+
+    <Grid RowDefinitions="*,Auto,Auto,Auto">
+
+        <!-- The page and its signatures: tap to select, drag to move, corner handle to resize, × to remove. -->
+        <views:StampEditor x:Name="Editor" />
+
+        <!-- Saved signatures: tap to put one on the page. -->
+        <Grid Grid.Row="1" RowDefinitions="Auto,Auto" Padding="12,8,12,6" BackgroundColor="{AppThemeBinding Light={StaticResource CardBackground}, Dark={StaticResource CardBackgroundDark}}">
+            <Label Text="Chạm một chữ ký để đặt lên trang · kéo để dời · kéo chấm xanh để đổi cỡ" FontSize="11"
+                   TextColor="{AppThemeBinding Light={StaticResource Muted}, Dark={StaticResource MutedDark}}" Margin="2,0,0,6" />
+            <ScrollView Grid.Row="1" Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
+                <HorizontalStackLayout Spacing="8">
+                    <!-- New signature -->
+                    <Border WidthRequest="96" HeightRequest="60" StrokeThickness="1.5" StrokeDashArray="4,3"
+                            Stroke="{StaticResource Primary}" BackgroundColor="Transparent">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="8" />
+                        </Border.StrokeShape>
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding StartDrawingCommand}" />
+                        </Border.GestureRecognizers>
+                        <VerticalStackLayout HorizontalOptions="Center" VerticalOptions="Center" Spacing="0" InputTransparent="True">
+                            <Label Text="{x:Static views:Icons.Add}" FontFamily="Icons" FontSize="20" HorizontalOptions="Center"
+                                   TextColor="{StaticResource Primary}" />
+                            <Label Text="Vẽ chữ ký" FontSize="11" HorizontalOptions="Center" TextColor="{StaticResource Primary}" />
+                        </VerticalStackLayout>
+                    </Border>
+                    <!-- New signature from a picture already on the phone (a photo of a signed paper, or a
+                         ready-made signature image) -->
+                    <Border WidthRequest="96" HeightRequest="60" StrokeThickness="1.5" StrokeDashArray="4,3"
+                            Stroke="{StaticResource Primary}" BackgroundColor="Transparent">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="8" />
+                        </Border.StrokeShape>
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnPickImage" />
+                        </Border.GestureRecognizers>
+                        <VerticalStackLayout HorizontalOptions="Center" VerticalOptions="Center" Spacing="0" InputTransparent="True">
+                            <Label Text="{x:Static views:Icons.Gallery}" FontFamily="Icons" FontSize="20" HorizontalOptions="Center"
+                                   TextColor="{StaticResource Primary}" />
+                            <Label Text="Chọn ảnh" FontSize="11" HorizontalOptions="Center" TextColor="{StaticResource Primary}" />
+                        </VerticalStackLayout>
+                    </Border>
+                    <HorizontalStackLayout BindableLayout.ItemsSource="{Binding Saved}" Spacing="8">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="vm:SignatureChoice">
+                                <Grid WidthRequest="124" HeightRequest="60">
+                                    <Border StrokeThickness="1" Stroke="{AppThemeBinding Light={StaticResource Divider}, Dark={StaticResource DividerDark}}"
+                                            BackgroundColor="{AppThemeBinding Light={StaticResource CardBackground}, Dark={StaticResource CardBackgroundDark}}" Padding="6,4">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="8" />
+                                        </Border.StrokeShape>
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer Command="{Binding UseCommand}" />
+                                        </Border.GestureRecognizers>
+                                        <Image Source="{Binding Picture}" Aspect="AspectFit" InputTransparent="True" />
+                                    </Border>
+                                    <Label Text="{x:Static views:Icons.Close}" FontFamily="Icons" FontSize="14" Padding="4"
+                                           HorizontalOptions="End" VerticalOptions="Start"
+                                           TextColor="{AppThemeBinding Light={StaticResource Muted}, Dark={StaticResource MutedDark}}">
+                                        <Label.GestureRecognizers>
+                                            <TapGestureRecognizer Command="{Binding RemoveCommand}" />
+                                        </Label.GestureRecognizers>
+                                    </Label>
+                                </Grid>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </HorizontalStackLayout>
+                </HorizontalStackLayout>
+            </ScrollView>
+        </Grid>
+
+        <Grid Grid.Row="2" ColumnDefinitions="*,*,*" HeightRequest="60" BackgroundColor="{AppThemeBinding Light={StaticResource CardBackground}, Dark={StaticResource CardBackgroundDark}}">
+            <BoxView Grid.ColumnSpan="3" HeightRequest="0.6" VerticalOptions="Start" Color="{AppThemeBinding Light={StaticResource Divider}, Dark={StaticResource DividerDark}}" />
+            <views:ToolButton Icon="{x:Static views:Icons.Signature}" Text="Vẽ chữ ký" Command="{Binding StartDrawingCommand}" />
+            <views:ToolButton x:Name="RemoveButton" Grid.Column="1" Icon="{x:Static views:Icons.Delete}" Text="Bỏ chữ ký đang chọn" />
+            <views:ToolButton x:Name="DoneButton" Grid.Column="2" Icon="{x:Static views:Icons.Check}" Text="Xong" IsActive="True" />
+        </Grid>
+
+        <views:AdBannerSurface Grid.Row="3" />
+
+        <!-- Drawing pad -->
+        <Grid Grid.RowSpan="4" IsVisible="{Binding IsDrawing}" BackgroundColor="#99000000">
+            <Border Margin="14" VerticalOptions="Center" Padding="14,12" StrokeThickness="0"
+                    BackgroundColor="{AppThemeBinding Light={StaticResource CardBackground}, Dark={StaticResource CardBackgroundDark}}">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="14" />
+                </Border.StrokeShape>
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Ký vào khung bên dưới" FontSize="15" FontFamily="OpenSansSemibold"
+                           TextColor="{AppThemeBinding Light={StaticResource OnSurface}, Dark={StaticResource OnSurfaceDark}}" />
+                    <Border StrokeThickness="1" Stroke="#D6DCE4" Padding="0" BackgroundColor="White">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="8" />
+                        </Border.StrokeShape>
+                        <views:SignaturePad x:Name="Pad" HeightRequest="220" />
+                    </Border>
+                    <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="8">
+                        <!-- Ink colors -->
+                        <HorizontalStackLayout Spacing="10" VerticalOptions="Center">
+                            <Border WidthRequest="28" HeightRequest="28" BackgroundColor="#111111" StrokeThickness="0">
+                                <Border.StrokeShape><RoundRectangle CornerRadius="14" /></Border.StrokeShape>
+                                <Border.Triggers>
+                                    <DataTrigger TargetType="Border" Binding="{Binding InkIndex}" Value="0">
+                                        <Setter Property="StrokeThickness" Value="3" />
+                                        <Setter Property="Stroke" Value="{StaticResource Primary}" />
+                                    </DataTrigger>
+                                </Border.Triggers>
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding SetInkCommand}" CommandParameter="0" />
+                                </Border.GestureRecognizers>
+                            </Border>
+                            <Border WidthRequest="28" HeightRequest="28" BackgroundColor="#1A3A9E" StrokeThickness="0">
+                                <Border.StrokeShape><RoundRectangle CornerRadius="14" /></Border.StrokeShape>
+                                <Border.Triggers>
+                                    <DataTrigger TargetType="Border" Binding="{Binding InkIndex}" Value="1">
+                                        <Setter Property="StrokeThickness" Value="3" />
+                                        <Setter Property="Stroke" Value="#8AB4FF" />
+                                    </DataTrigger>
+                                </Border.Triggers>
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding SetInkCommand}" CommandParameter="1" />
+                                </Border.GestureRecognizers>
+                            </Border>
+                            <Border WidthRequest="28" HeightRequest="28" BackgroundColor="#B71C1C" StrokeThickness="0">
+                                <Border.StrokeShape><RoundRectangle CornerRadius="14" /></Border.StrokeShape>
+                                <Border.Triggers>
+                                    <DataTrigger TargetType="Border" Binding="{Binding InkIndex}" Value="2">
+                                        <Setter Property="StrokeThickness" Value="3" />
+                                        <Setter Property="Stroke" Value="{StaticResource Primary}" />
+                                    </DataTrigger>
+                                </Border.Triggers>
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding SetInkCommand}" CommandParameter="2" />
+                                </Border.GestureRecognizers>
+                            </Border>
+                        </HorizontalStackLayout>
+                        <Button x:Name="ClearPadButton" Grid.Column="2" Text="Xoá nét" FontSize="13" Padding="10,0" HeightRequest="38"
+                                BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource OnSurface}, Dark={StaticResource OnSurfaceDark}}" />
+                        <Button Grid.Column="3" Text="Huỷ" FontSize="13" Padding="10,0" HeightRequest="38" Command="{Binding CancelDrawingCommand}"
+                                BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource OnSurface}, Dark={StaticResource OnSurfaceDark}}" />
+                        <Button x:Name="SavePadButton" Grid.Column="4" Text="Lưu" FontSize="13" Padding="16,0" HeightRequest="38"
+                                BackgroundColor="{StaticResource Primary}" TextColor="White" CornerRadius="19" />
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
+    </Grid>
+</ContentPage>

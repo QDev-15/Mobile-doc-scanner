@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Class="DocScanner.Views.SplashPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    Shell.NavBarIsVisible="False"
+    BackgroundColor="#5B4FE0">
+
+    <Grid RowDefinitions="*,Auto,*,Auto">
+        <Grid.Background>
+            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Color="#8A7FF0" Offset="0" />
+                <GradientStop Color="#5B4FE0" Offset="0.45" />
+                <GradientStop Color="#3A2F99" Offset="1" />
+            </LinearGradientBrush>
+        </Grid.Background>
+
+        <VerticalStackLayout Grid.Row="1" Spacing="14" HorizontalOptions="Center">
+            <!-- The scanner mark; a light bar sweeps over the page while the app gets ready. -->
+            <Grid x:Name="Mark" WidthRequest="170" HeightRequest="170" HorizontalOptions="Center" Opacity="0" Scale="0.7">
+                <Image Source="splash_mark.png" WidthRequest="170" HeightRequest="170" />
+                <BoxView x:Name="ScanBar" HeightRequest="8" WidthRequest="90" CornerRadius="4" Color="#5CF2B8"
+                         HorizontalOptions="Center" VerticalOptions="Start" TranslationY="62" />
+            </Grid>
+            <Label x:Name="AppName" Text="Doc Scanner" FontSize="30" FontFamily="OpenSansSemibold" TextColor="White"
+                   HorizontalOptions="Center" />
+            <Label x:Name="Tagline" Text="Quét tài liệu · nắn thẳng · xuất PDF" FontSize="14" TextColor="#E3DDFA"
+                   HorizontalOptions="Center" />
+        </VerticalStackLayout>
+
+        <VerticalStackLayout Grid.Row="3" Spacing="4" Padding="0,0,0,36" HorizontalOptions="Center">
+            <ActivityIndicator IsRunning="True" Color="White" WidthRequest="22" HeightRequest="22" Margin="0,0,0,10" />
+            <Label x:Name="VersionLabel" FontSize="12" TextColor="#CFC6F2" HorizontalOptions="Center" />
+            <Label Text="© 2026 Nguyễn Hữu Quỳnh" FontSize="12" TextColor="#CFC6F2" HorizontalOptions="Center" />
+        </VerticalStackLayout>
+    </Grid>
+</ContentPage>

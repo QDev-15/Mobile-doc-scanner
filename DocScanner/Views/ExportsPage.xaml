@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Class="DocScanner.Views.ExportsPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:DocScanner.ViewModels"
+    xmlns:views="clr-namespace:DocScanner.Views"
+    x:DataType="vm:ExportsViewModel"
+    Title="PDF đã xuất"
+    BackgroundColor="{AppThemeBinding Light={StaticResource Surface}, Dark={StaticResource SurfaceDark}}">
+
+    <ContentPage.ToolbarItems>
+        <ToolbarItem Text="Tìm kiếm" Command="{Binding ToggleSearchCommand}" Order="Primary">
+            <ToolbarItem.IconImageSource>
+                <FontImageSource FontFamily="Icons" Glyph="{x:Static views:Icons.Search}" Size="22"
+                                 Color="{AppThemeBinding Light={StaticResource OnSurface}, Dark={StaticResource OnSurfaceDark}}" />
+            </ToolbarItem.IconImageSource>
+        </ToolbarItem>
+    </ContentPage.ToolbarItems>
+
+    <Grid RowDefinitions="Auto,Auto,*,Auto">
+        <Label Text="{Binding Summary}" Margin="16,8,16,6" FontSize="12"
+               TextColor="{AppThemeBinding Light={StaticResource Muted}, Dark={StaticResource MutedDark}}" />
+
+        <SearchBar Grid.Row="1" IsVisible="{Binding IsSearching}" Text="{Binding SearchText}" Placeholder="Tìm theo tên file PDF..."
+                   BackgroundColor="{AppThemeBinding Light={StaticResource CardBackground}, Dark={StaticResource CardBackgroundDark}}"
+                   Margin="16,0,16,8" />
+
+        <RefreshView Grid.Row="2" Command="{Binding RefreshCommand}" IsRefreshing="{Binding IsRefreshing}">
+            <CollectionView ItemsSource="{Binding Files}">
+                <CollectionView.EmptyView>
+                    <VerticalStackLayout VerticalOptions="Center" Spacing="8" Padding="24">
+                        <Label Text="{x:Static views:Icons.Pdf}" FontFamily="Icons" FontSize="64" HorizontalOptions="Center"
+                               TextColor="{AppThemeBinding Light=#C9C2EC, Dark=#4A4568}" />
+                        <Label Text="Chưa có PDF nào" FontSize="18" FontAttributes="Bold" HorizontalOptions="Center" />
+                        <Label Text="{Binding EmptyText}"
+                               HorizontalOptions="Center" HorizontalTextAlignment="Center"
+                               TextColor="{AppThemeBinding Light={StaticResource Muted}, Dark={StaticResource MutedDark}}" />
+                    </VerticalStackLayout>
+                </CollectionView.EmptyView>
+                <CollectionView.ItemsLayout>
+                    <LinearItemsLayout Orientation="Vertical" ItemSpacing="1" />
+                </CollectionView.ItemsLayout>
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ExportItem">
+                        <SwipeView>
+                            <SwipeView.RightItems>
+                                <SwipeItems>
+                                    <SwipeItem Text="Xoá" BackgroundColor="#D32F2F" Command="{Binding DeleteCommand}" />
+                                </SwipeItems>
+                            </SwipeView.RightItems>
+                            <Border StrokeThickness="0" Padding="16,10"
+                                    BackgroundColor="{AppThemeBinding Light={StaticResource CardBackground}, Dark={StaticResource CardBackgroundDark}}">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding OpenCommand}" />
+                                </Border.GestureRecognizers>
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                                    <Label Text="{x:Static views:Icons.Pdf}" FontFamily="Icons" FontSize="32" TextColor="#E53935" VerticalOptions="Center" />
+                                    <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="2">
+                                        <Label Text="{Binding Name}" FontSize="14" FontFamily="OpenSansSemibold" LineBreakMode="MiddleTruncation" />
+                                        <Label Text="{Binding Details}" FontSize="12"
+                                               TextColor="{AppThemeBinding Light={StaticResource Muted}, Dark={StaticResource MutedDark}}" />
+                                    </VerticalStackLayout>
+                                    <!-- Share / save / open with another app / delete -->
+                                    <Label Grid.Column="2" Text="{x:Static views:Icons.More}" FontFamily="Icons" FontSize="22" Padding="10,8"
+                                           VerticalOptions="Center" TextColor="{AppThemeBinding Light={StaticResource Muted}, Dark={StaticResource MutedDark}}">
+                                        <Label.GestureRecognizers>
+                                            <TapGestureRecognizer Command="{Binding MenuCommand}" />
+                                        </Label.GestureRecognizers>
+                                    </Label>
+                                </Grid>
+                            </Border>
+                        </SwipeView>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </RefreshView>
+
+        <views:AdBannerSurface Grid.Row="3" />
+    </Grid>
+</ContentPage>

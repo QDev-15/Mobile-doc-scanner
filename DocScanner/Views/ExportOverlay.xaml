@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView
+    x:Class="DocScanner.Views.ExportOverlay"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:services="clr-namespace:DocScanner.Services"
+    x:DataType="services:ExportCoordinator"
+    IsVisible="{Binding IsExporting}"
+    BackgroundColor="#B3000000">
+
+    <!-- Full-screen scrim while a PDF is being exported (any screen that has the "Xuất PDF" button). -->
+    <VerticalStackLayout VerticalOptions="Center" HorizontalOptions="Center" Spacing="16">
+        <ActivityIndicator IsRunning="{Binding IsExporting}" Color="White" WidthRequest="48" HeightRequest="48" />
+        <Label Text="{Binding ExportText}" TextColor="White" FontSize="16" HorizontalTextAlignment="Center" />
+        <Button Text="Huỷ" Command="{Binding CancelCommand}" />
+    </VerticalStackLayout>
+</ContentView>

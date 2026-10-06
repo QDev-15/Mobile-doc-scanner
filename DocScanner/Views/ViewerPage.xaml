@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Class="DocScanner.Views.ViewerPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:DocScanner.ViewModels"
+    xmlns:views="clr-namespace:DocScanner.Views"
+    x:DataType="vm:ViewerViewModel"
+    Title="{Binding Title}"
+   >
+
+    <ContentPage.ToolbarItems>
+        <ToolbarItem Text="Chia sẻ" Command="{Binding ShareCommand}" Order="Primary">
+            <ToolbarItem.IconImageSource>
+                <FontImageSource FontFamily="Icons" Glyph="{x:Static views:Icons.Share}" Size="22"
+                                 Color="{AppThemeBinding Light={StaticResource OnSurface}, Dark={StaticResource OnSurfaceDark}}" />
+            </ToolbarItem.IconImageSource>
+        </ToolbarItem>
+    </ContentPage.ToolbarItems>
+
+    <Grid RowDefinitions="*,Auto,Auto">
+
+        <!-- The page, full resolution: pinch / double tap to zoom, drag when zoomed, swipe for the next / previous page. -->
+        <Grid IsClippedToBounds="True">
+            <Image x:Name="Picture" Aspect="AspectFit" />
+            <Border IsVisible="{Binding HasStatus}" VerticalOptions="Start" HorizontalOptions="Center"
+                    Margin="0,10,0,0" Padding="12,4" StrokeThickness="0" BackgroundColor="#99000000" InputTransparent="True">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="12" />
+                </Border.StrokeShape>
+                <Label Text="{Binding Status}" FontSize="12" TextColor="White" />
+            </Border>
+        </Grid>
+
+        <Grid Grid.Row="1" ColumnDefinitions="*,*,*,*" HeightRequest="60" BackgroundColor="{AppThemeBinding Light={StaticResource CardBackground}, Dark={StaticResource CardBackgroundDark}}">
+            <views:ToolButton Icon="{x:Static views:Icons.ChevronLeft}" Text="Trước" IsEnabled="{Binding CanGoPrevious}"
+                              Command="{Binding GoCommand}">
+                <views:ToolButton.CommandParameter><x:Int32>-1</x:Int32></views:ToolButton.CommandParameter>
+            </views:ToolButton>
+            <views:ToolButton Grid.Column="1" Icon="{x:Static views:Icons.Edit}" Text="Sửa" Command="{Binding EditCommand}" />
+            <views:ToolButton Grid.Column="2" Icon="{x:Static views:Icons.Pdf}" Text="Xuất PDF" Command="{Binding ExportPdfCommand}" />
+            <views:ToolButton Grid.Column="3" Icon="{x:Static views:Icons.ChevronRight}" Text="Sau" IsEnabled="{Binding CanGoNext}"
+                              Command="{Binding GoCommand}">
+                <views:ToolButton.CommandParameter><x:Int32>1</x:Int32></views:ToolButton.CommandParameter>
+            </views:ToolButton>
+        </Grid>
+
+        <views:AdBannerSurface Grid.Row="2" />
+
+        <views:ExportOverlay Grid.RowSpan="3" />
+    </Grid>
+</ContentPage>

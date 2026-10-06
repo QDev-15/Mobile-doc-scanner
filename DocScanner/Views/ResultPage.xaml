@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Class="DocScanner.Views.ResultPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:DocScanner.ViewModels"
+    xmlns:views="clr-namespace:DocScanner.Views"
+    x:DataType="vm:ResultViewModel"
+    Title="{Binding Title}"
+    BackgroundColor="{AppThemeBinding Light={StaticResource Surface}, Dark={StaticResource SurfaceDark}}">
+
+    <ContentPage.ToolbarItems>
+        <ToolbarItem Text="Xuất PDF" Command="{Binding ExportPdfCommand}" Order="Primary">
+            <ToolbarItem.IconImageSource>
+                <FontImageSource FontFamily="Icons" Glyph="{x:Static views:Icons.Pdf}" Size="22"
+                                 Color="{AppThemeBinding Light={StaticResource OnSurface}, Dark={StaticResource OnSurfaceDark}}" />
+            </ToolbarItem.IconImageSource>
+        </ToolbarItem>
+        <ToolbarItem Text="Xong" Command="{Binding DoneCommand}" Order="Primary">
+            <ToolbarItem.IconImageSource>
+                <FontImageSource FontFamily="Icons" Glyph="{x:Static views:Icons.Check}" Size="24"
+                                 Color="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
+            </ToolbarItem.IconImageSource>
+        </ToolbarItem>
+    </ContentPage.ToolbarItems>
+
+    <ContentPage.Resources>
+        <!-- A filter choice: a small card, outlined in the brand color when chosen. -->
+        <Style x:Key="FilterCard" TargetType="Border">
+            <Setter Property="WidthRequest" Value="84" />
+            <Setter Property="StrokeThickness" Value="1.5" />
+            <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource Divider}, Dark={StaticResource DividerDark}}" />
+            <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource Surface}, Dark=#2A2638}" />
+            <Setter Property="StrokeShape" Value="RoundRectangle 10" />
+        </Style>
+        <Style x:Key="FilterName" TargetType="Label">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="HorizontalOptions" Value="Center" />
+            <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource OnSurface}, Dark={StaticResource OnSurfaceDark}}" />
+        </Style>
+        <Style x:Key="PanelIcon" TargetType="Label">
+            <Setter Property="FontFamily" Value="Icons" />
+            <Setter Property="FontSize" Value="20" />
+            <Setter Property="VerticalOptions" Value="Center" />
+            <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Muted}, Dark={StaticResource MutedDark}}" />
+        </Style>
+    </ContentPage.Resources>
+
+    <Grid RowDefinitions="Auto,*,Auto,Auto,Auto">
+
+        <!-- ‹ status › -->
+        <Grid Grid.Row="0" ColumnDefinitions="44,*,44" HeightRequest="36">
+            <views:ToolButton Icon="{x:Static views:Icons.ChevronLeft}" Text="" IconSize="26" Padding="0"
+                              IsEnabled="{Binding CanGoPrevious}" Command="{Binding GoCommand}">
+                <views:ToolButton.CommandParameter><x:Int32>-1</x:Int32></views:ToolButton.CommandParameter>
+            </views:ToolButton>
+            <HorizontalStackLayout Grid.Column="1" HorizontalOptions="Center" Spacing="8">
+                <Label Text="{Binding Status}" VerticalOptions="Center" FontSize="12" MaxLines="1" LineBreakMode="TailTruncation"
+                       TextColor="{AppThemeBinding Light=#6B7280, Dark=#9CA3AF}" />
+                <Label Text="Thử lại" IsVisible="{Binding HasError}" FontSize="12" FontFamily="OpenSansSemibold" VerticalOptions="Center"
+                       TextColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}">
+                    <Label.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding RetryCommand}" />
+                    </Label.GestureRecognizers>
+                </Label>
+            </HorizontalStackLayout>
+            <views:ToolButton Grid.Column="2" Icon="{x:Static views:Icons.ChevronRight}" Text="" IconSize="26" Padding="0"
+                              IsEnabled="{Binding CanGoNext}" Command="{Binding GoCommand}">
+                <views:ToolButton.CommandParameter><x:Int32>1</x:Int32></views:ToolButton.CommandParameter>
+            </views:ToolButton>
+        </Grid>
+
+        <!-- The page: pinch / double tap to zoom, drag when zoomed; at fit, swipe left / right = next / previous page
+             (all on the native view: ZoomController). -->
+        <Grid Grid.Row="1" Margin="12,0,12,8" BackgroundColor="Transparent" IsClippedToBounds="True">
+            <!-- The live preview: the code-behind puts the bitmap and the brightness / contrast color matrix on the native view. -->
+            <Image x:Name="PreviewImage" Aspect="AspectFit" />
+            <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" Color="{StaticResource Primary}"
+                               HorizontalOptions="Center" VerticalOptions="Center" WidthRequest="40" HeightRequest="40" />
+        </Grid>
+
+        <!-- Tool panel (one at a time), above the bottom bar. Locked while the page is not ready. -->
+        <Grid Grid.Row="2" IsEnabled="{Binding CanEdit}" BackgroundColor="{AppThemeBinding Light={StaticResource CardBackground}, Dark={StaticResource CardBackgroundDark}}">
+
+            <!-- Filters -->
+            <VerticalStackLayout IsVisible="{Binding ShowFilters}" Padding="12,10,12,4" Spacing="4">
+                <HorizontalStackLayout HorizontalOptions="Center" Spacing="12">
+                    <Border Style="{StaticResource FilterCard}">
+                        <Border.Triggers>
+                            <DataTrigger TargetType="Border" Binding="{Binding IsColor}" Value="True">
+                                <Setter Property="Stroke" Value="{StaticResource Primary}" />
+                            </DataTrigger>
+                        </Border.Triggers>
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding SetModeCommand}" CommandParameter="Color" />
+                        </Border.GestureRecognizers>
+                        <VerticalStackLayout Padding="4,4,4,3" Spacing="2" InputTransparent="True">
+                            <Image x:Name="ThumbColor" HeightRequest="74" Aspect="AspectFit" />
+                            <Label Text="Màu" Style="{StaticResource FilterName}">
+                                <Label.Triggers>
+                                    <DataTrigger TargetType="Label" Binding="{Binding IsColor}" Value="True">
+                                        <Setter Property="TextColor" Value="{StaticResource Primary}" />
+                                        <Setter Property="FontAttributes" Value="Bold" />
+                                    </DataTrigger>
+                                </Label.Triggers>
+                            </Label>
+                        </VerticalStackLayout>
+                    </Border>
+                    <Border Style="{StaticResource FilterCard}">
+                        <Border.Triggers>
+                            <DataTrigger TargetType="Border" Binding="{Binding IsGray}" Value="True">
+                                <Setter Property="Stroke" Value="{StaticResource Primary}" />
+                            </DataTrigger>
+                        </Border.Triggers>
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding SetModeCommand}" CommandParameter="Gray" />
+                        </Border.GestureRecognizers>
+                        <VerticalStackLayout Padding="4,4,4,3" Spacing="2" InputTransparent="True">
+                            <Image x:Name="ThumbGray" HeightRequest="74" Aspect="AspectFit" />
+                            <Label Text="Xám" Style="{StaticResource FilterName}">
+                                <Label.Triggers>
+                                    <DataTrigger TargetType="Label" Binding="{Binding IsGray}" Value="True">
+                                        <Setter Property="TextColor" Value="{StaticResource Primary}" />
+                                        <Setter Property="FontAttributes" Value="Bold" />
+                                    </DataTrigger>
+                                </Label.Triggers>
+                            </Label>
+                        </VerticalStackLayout>
+                    </Border>
+                    <Border Style="{StaticResource FilterCard}">
+                        <Border.Triggers>
+                            <DataTrigger TargetType="Border" Binding="{Binding IsBlackWhite}" Value="True">
+                                <Setter Property="Stroke" Value="{StaticResource Primary}" />
+                            </DataTrigger>
+                        </Border.Triggers>
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding SetModeCommand}" CommandParameter="BlackWhite" />
+                        </Border.GestureRecognizers>
+                        <VerticalStackLayout Padding="4,4,4,3" Spacing="2" InputTransparent="True">
+                            <Image x:Name="ThumbBlackWhite" HeightRequest="74" Aspect="AspectFit" />
+                            <Label Text="Đen trắng" Style="{StaticResource FilterName}">
+                                <Label.Triggers>
+                                    <DataTrigger TargetType="Label" Binding="{Binding IsBlackWhite}" Value="True">
+                                        <Setter Property="TextColor" Value="{StaticResource Primary}" />
+                                        <Setter Property="FontAttributes" Value="Bold" />
+                                    </DataTrigger>
+                                </Label.Triggers>
+                            </Label>
+                        </VerticalStackLayout>
+                    </Border>
+                </HorizontalStackLayout>
+                <Label Text="Áp dụng cho mọi trang" FontSize="12" HorizontalOptions="Center" Padding="8,6"
+                       TextColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}">
+                    <Label.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding ApplyToAllCommand}" />
+                    </Label.GestureRecognizers>
+                </Label>
+            </VerticalStackLayout>
+
+            <!-- Adjust: darkness (black and white), brightness (all looks), contrast (color, gray); background cleaning.
+                 Every slider shows its effect while it moves; the page is saved when it is released. -->
+            <VerticalStackLayout IsVisible="{Binding ShowAdjust}" Padding="14,6,8,2" Spacing="0">
+                <Grid ColumnDefinitions="28,*,Auto" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="6">
+                    <Label Style="{StaticResource PanelIcon}" Text="{x:Static views:Icons.BlackWhite}" IsVisible="{Binding IsBlackWhite}" />
+                    <Slider Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding Darkness}" VerticalOptions="Center" HeightRequest="36"
+                            IsVisible="{Binding IsBlackWhite}" DragStartedCommand="{Binding StartDragCommand}" DragCompletedCommand="{Binding CommitDarknessCommand}" />
+                    <Label Grid.Row="1" Style="{StaticResource PanelIcon}" Text="{x:Static views:Icons.Brightness}" />
+                    <Slider Grid.Row="1" Grid.Column="1" Minimum="-100" Maximum="100" Value="{Binding Brightness}" VerticalOptions="Center"
+                            HeightRequest="36" DragStartedCommand="{Binding StartDragCommand}" DragCompletedCommand="{Binding CommitToneCommand}" />
+                    <Label Grid.Row="2" Style="{StaticResource PanelIcon}" Text="{x:Static views:Icons.Contrast}" IsVisible="{Binding ShowTone}" />
+                    <Slider Grid.Row="2" Grid.Column="1" Minimum="-100" Maximum="100" Value="{Binding Contrast}" VerticalOptions="Center"
+                            HeightRequest="36" IsVisible="{Binding ShowTone}" DragStartedCommand="{Binding StartDragCommand}" DragCompletedCommand="{Binding CommitToneCommand}" />
+                    <views:ToolButton Grid.Column="2" Grid.RowSpan="3" Icon="{x:Static views:Icons.Reset}" Text="Mặc định"
+                                      Command="{Binding ResetToneCommand}" />
+                </Grid>
+                <Grid ColumnDefinitions="*,Auto" HeightRequest="40" IsVisible="{Binding ShowCleanBackground}">
+                    <Label Text="Làm sạch nền (xoá bóng, giấy ngả vàng)" FontSize="12" VerticalOptions="Center"
+                           TextColor="{AppThemeBinding Light={StaticResource OnSurface}, Dark={StaticResource OnSurfaceDark}}" />
+                    <Switch Grid.Column="1" IsToggled="{Binding CleanBackground}" OnColor="{StaticResource Primary}" />
+                </Grid>
+            </VerticalStackLayout>
+        </Grid>
+
+        <!-- Bottom toolbar -->
+        <Grid Grid.Row="3" ColumnDefinitions="*,*,*,*,*,*" HeightRequest="60"
+              BackgroundColor="{AppThemeBinding Light={StaticResource CardBackground}, Dark={StaticResource CardBackgroundDark}}">
+            <BoxView Grid.ColumnSpan="6" HeightRequest="0.6" VerticalOptions="Start"
+                     Color="{AppThemeBinding Light={StaticResource Divider}, Dark={StaticResource DividerDark}}" />
+            <views:ToolButton Icon="{x:Static views:Icons.Filter}" Text="Bộ lọc" IsActive="{Binding ShowFilters}"
+                              Command="{Binding TogglePanelCommand}" CommandParameter="Filters" />
+            <views:ToolButton Grid.Column="1" Icon="{x:Static views:Icons.Tune}" Text="Điều chỉnh" IsActive="{Binding ShowAdjust}"
+                              Command="{Binding TogglePanelCommand}" CommandParameter="Adjust" />
+            <views:ToolButton Grid.Column="2" Icon="{x:Static views:Icons.Crop}" Text="Khung" Command="{Binding EditAgainCommand}" IsEnabled="{Binding CanEdit}" />
+            <views:ToolButton Grid.Column="3" Icon="{x:Static views:Icons.RotateRight}" Text="Xoay" IsEnabled="{Binding CanEdit}"
+                              Command="{Binding RotateCommand}">
+                <views:ToolButton.CommandParameter><x:Int32>90</x:Int32></views:ToolButton.CommandParameter>
+            </views:ToolButton>
+            <views:ToolButton Grid.Column="4" Icon="{x:Static views:Icons.Signature}" Text="Chữ ký" IsEnabled="{Binding CanEdit}"
+                              Command="{Binding SignCommand}" />
+            <views:ToolButton Grid.Column="5" Icon="{x:Static views:Icons.AspectRatio}" Text="{Binding AspectText}" IsEnabled="{Binding CanEdit}"
+                              Command="{Binding ToggleAspectCommand}" />
+        </Grid>
+
+        <views:AdBannerSurface Grid.Row="4" />
+
+        <views:ExportOverlay Grid.RowSpan="5" />
+    </Grid>
+</ContentPage>
