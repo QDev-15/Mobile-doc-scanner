@@ -1,7 +1,0 @@
-<Solution>
-  <Project Path="../DocScanner.Core.Tests/DocScanner.Core.Tests.csproj" />
-  <Project Path="../DocScanner.Core/DocScanner.Core.csproj" />
-  <Project Path="../DocScanner.Shared/DocScanner.Shared.csproj" />
-  <Project Path="../DocScanner.Shared.Tests/DocScanner.Shared.Tests.csproj" />
-  <Project Path="DocScanner.csproj" />
-</Solution>
