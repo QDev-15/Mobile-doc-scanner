@@ -29,15 +29,15 @@ dotnet build DocScanner/DocScanner.csproj -f net10.0-android -t:Run  # cài + ch
 
 Build Release/AAB để upload Play Console: xem [DocScanner/Build_aab.md](DocScanner/Build_aab.md).
 
-## Trạng thái hiện tại (kiểm tra lại 2026-10-07)
+## Trạng thái hiện tại (kiểm tra lại 2026-10-08)
 
 - Build Debug (Android, cả app `DocScanner.csproj` lẫn thư viện `DocScanner.AdsService`) sạch, 0 lỗi.
   `DocScanner.Core.Tests` 196/196 PASS + `DocScanner.Shared.Tests` 135/135 PASS (= 331 test tổng, đăng ký trong
   `DocScanner.slnx` ở gốc repo -- owner đã chuyển file này ra khỏi `DocScanner/` giữa các đợt).
-- **Quảng cáo đã tách sang `DocScanner.AdsService`** (dùng lại được ở project khác), hỗ trợ AdMob + AppLovin, chọn
-  bằng 1 dòng trong `MauiProgram.cs`. Nhà quảng cáo đang BẬT trong code vẫn là AdMob; AppLovin đã viết xong + build
-  xác nhận nhưng chưa chuyển sang vì còn thiếu SDK key/ad unit ID thật (owner cần tự tạo tài khoản AppLovin). Chi
-  tiết: CLAUDE.md đợt 2026-10-07.
+- **Quảng cáo đã tách sang `DocScanner.AdsService`** (dùng lại được ở project khác), hỗ trợ **AdMob + AppLovin +
+  Unity LevelPlay**, chọn bằng 1 dòng trong `MauiProgram.cs`. Nhà quảng cáo đang BẬT trong code vẫn là AdMob; cả
+  AppLovin lẫn LevelPlay đã viết xong + build xác nhận nhưng chưa chuyển sang vì còn thiếu tài khoản/khoá thật
+  (AppLovin hiện từ chối nhận publisher mới; LevelPlay vẫn mở đăng ký). Chi tiết: CLAUDE.md đợt 2026-10-07/08.
 - **Mất**: `MOBILE-STATUS.md` (tổng hợp việc chưa kiểm chứng/còn lại) và `THIRD-PARTY-NOTICES.md` (danh sách license
   bên thứ ba) được nhắc nhiều lần trong các file `.md` khác nhưng không có trong repo, không khôi phục được.
 - Android Release build chưa được build lại/cài thử trên máy sau các sửa gần nhất -- cần owner tự build + thử trên

@@ -819,3 +819,36 @@ viết lại, rồi mới thêm AppLovin vào cùng service đó -- cách dùng 
   + interstitial, giống bước đã làm cho AdMob trước đây). Khi có đủ, chuyển chỉ là đổi `new AdMobOptions(...)` thành
   `new AppLovinOptions(sdkKey, bannerAdUnitId, interstitialAdUnitId)` trong `MauiProgram.cs`, không cần sửa gì khác.
 - Chưa build/cài thử bản Release hay chạy trên máy thật đợt này -- chỉ xác nhận bằng build Debug + unit test.
+
+### Thêm Unity LevelPlay (ironSource) vào `DocScanner.AdsService` (đợt 2026-10-08, owner yêu cầu sau khi AppLovin từ chối nhận publisher mới)
+Owner đăng ký AppLovin bị từ chối ("hiện tại chúng tôi không chấp nhận thêm tài khoản nhà xuất bản mới"). Kiểm tra trước: Unity LevelPlay vẫn
+mở đăng ký bình thường (chỉ ironSource Ads -- mạng direct-demand cũ -- mới ngừng nhận tài khoản mới từ 2026-04-15, không ảnh hưởng LevelPlay).
+Vì kiến trúc đa nhà quảng cáo đã có sẵn, thêm LevelPlay là lặp lại đúng quy trình đã làm với AppLovin: bind SDK thật qua Maven, đọc API thật
+bằng `javap`, viết `IAdProvider` mới -- không phải viết lại gì.
+
+- **Maven coordinate thật**: `com.unity3d.ads-mediation:mediation-sdk` (đã chuyển hẳn sang Maven Central từ is.com, hạn chót 2025-06-30), bản
+  mới nhất lúc làm `9.6.1` (kiểm bằng `maven-metadata.xml`). POM đòi `adquality-sdk` trong khoảng `[9.10.0,10.0.0)` -> dùng đúng `9.10.0`
+  (`Bind="false"`, không gọi API của nó trực tiếp) + `org.jetbrains.kotlin:kotlin-stdlib:2.1.21` (XA4242 chỉ đúng gói `Xamarin.Kotlin.StdLib`,
+  nhưng phải dùng bản `2.4.0.1` chứ không phải bản ngang 2.1.21 -- NuGet báo downgrade conflict vì `Xamarin.AndroidX.Core` 1.19.0.1 đã sẵn đòi
+  tối thiểu 2.4.0.1, tương tự kiểu lỗi NU1605 đã gặp khi sửa quảng cáo AdMob/CameraX trước đây).
+- **Khó hơn hẳn AppLovin lúc bind**: AAR thật của ironSource có **hàng trăm class bị R8 làm phẳng tên** (1-2 ký tự, ví dụ `com.ironsource.A`,
+  `com.ironsource.b7`) nằm THẲNG trong package `com.ironsource` (không gọn trong 1 package con "impl" như AppLovin) -- không thể loại theo
+  tiền tố package. Sửa bằng so khớp ĐÚNG TÊN package (`@name='com.ironsource'`, không phải `starts-with`) nên chỉ xoá đúng các class phẳng đó,
+  giữ nguyên mọi package con có tên thật. Kéo theo lỗi dây chuyền ở `com.ironsource.mediationsdk.adunit.adapter.*` (SPI cho adapter mạng được
+  mediate, ví dụ chính AdMob) và `com.ironsource.mediationsdk.sdk.I*SmashListener` ("smash" = thuật ngữ nội bộ ironSource cho 1 mạng trong
+  waterfall) -- cả hai đều là lớp nội bộ không bao giờ gọi trực tiếp khi tích hợp LevelPlay, xoá cả package qua `Transforms/Metadata.xml`
+  (xem comment trong file đó để biết đúng lý do từng dòng).
+- **API dùng**: SDK có cả API cũ (`com.ironsource.mediationsdk.IronSource`, class tĩnh) lẫn API mới đặt tên lại "LevelPlay"
+  (`com.unity3d.mediation.*`) -- chọn API mới vì rõ ràng, có kiểu Kotlin null-safety, đúng hướng Unity đang đẩy mạnh. Xác nhận bằng `javap` trên
+  đúng `classes.jar`, không đoán: `LevelPlay.Init(context, LevelPlayInitRequest, LevelPlayInitListener)` (hàm tên `Init`, KHÔNG phải
+  `InitializeSdk` hay `InitSdk`), `new LevelPlayBannerAdView(context, adUnitId)` + `.BannerListener = ...` (cặp getter/setter Java tự động
+  thành **property** C#, không phải `SetBannerListener(...)` như đoán ban đầu theo thói quen từ AppLovin -- sửa lại sau khi build báo CS1061),
+  `new LevelPlayInterstitialAd(adUnitId)` + `.SetListener(...)` (chỉ có setter nên vẫn là method, không thành property) + `.IsAdReady` +
+  `.ShowAd(Activity)` (**bắt buộc truyền Activity**, không có overload không tham số như AdMob/AppLovin -- lấy qua `Platform.CurrentActivity`,
+  đúng helper app đã dùng sẵn cho camera/picker).
+- Build xác nhận: `DocScanner.AdsService` (riêng) 0 lỗi, `DocScanner.csproj` (cả app) 0 lỗi -- không gặp lỗi trùng lớp D8/R8 kiểu
+  `androidx.browser` của đợt AppLovin (dependency của LevelPlay không đụng gì đã có sẵn trong app). `DocScanner.Core.Tests` 196/196 PASS.
+- **Trạng thái**: `LevelPlayOptions(appKey, bannerAdUnitId, interstitialAdUnitId, testMode)` đã có trong `AdsProviderOptions.cs`, nhà quảng cáo
+  đang BẬT trong `MauiProgram.cs` vẫn là AdMob -- cả AppLovin lẫn LevelPlay đều sẵn sàng, chỉ chờ owner có tài khoản + mã thật của 1 trong 2 để
+  chuyển (đổi đúng 1 dòng `new AdMobOptions(...)` thành `new LevelPlayOptions(...)` hoặc `new AppLovinOptions(...)`).
+- Chưa build/cài thử bản Release hay chạy trên máy thật đợt này -- chỉ xác nhận bằng build Debug + unit test, giống đợt AppLovin.

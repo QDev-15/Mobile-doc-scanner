@@ -8,9 +8,10 @@ namespace DocScanner.AdsService;
 
 /// <summary>The one call a consuming app makes: <c>builder.UseAdsService(options)</c> with the
 /// <see cref="AdsProviderOptions"/> for whichever network it wants (<see cref="AdMobOptions"/> /
-/// <see cref="AppLovinOptions"/>) -- registers the matching provider, the generic <see cref="IAdsClient"/>
-/// facade, and the <see cref="AdBannerSurface"/> handler. Nothing else in a consuming app needs to know which
-/// provider is active, or that one is swappable for the other, which is the whole point of this library.</summary>
+/// <see cref="AppLovinOptions"/> / <see cref="LevelPlayOptions"/>) -- registers the matching provider, the
+/// generic <see cref="IAdsClient"/> facade, and the <see cref="AdBannerSurface"/> handler. Nothing else in a
+/// consuming app needs to know which provider is active, or that one is swappable for another, which is the
+/// whole point of this library.</summary>
 public static class AdsServiceBuilderExtensions
 {
     public static MauiAppBuilder UseAdsService(this MauiAppBuilder builder, AdsProviderOptions options)
@@ -33,6 +34,11 @@ public static class AdsServiceBuilderExtensions
             case AppLovinOptions appLovin:
                 builder.Services.AddSingleton<IAdProvider>(_ =>
                     new AppLovinProvider(appLovin).Initialize(Android.App.Application.Context));
+                break;
+
+            case LevelPlayOptions levelPlay:
+                builder.Services.AddSingleton<IAdProvider>(_ =>
+                    new UnityLevelPlayProvider(levelPlay).Initialize(Android.App.Application.Context));
                 break;
 
             default:
