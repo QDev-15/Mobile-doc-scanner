@@ -8,14 +8,19 @@ namespace DocScanner.ViewModels;
 
 /// <summary>Every setting of the app in one place (each one is stored the moment it changes, in the same place the
 /// screens read it from), the storage used, and the app information.</summary>
-public partial class SettingsViewModel(DocumentStore store, ExportLibrary exportsLibrary, ILicenseService license, IAdConsentService consent) : ObservableObject
+public partial class SettingsViewModel(DocumentStore store, ExportLibrary exportsLibrary, ILicenseService license, IAdConsentService? consent = null) : ObservableObject
 {
 	/// <summary>Google UMP requires an always-reachable "privacy options" entry in regions where consent is required (EEA/UK...);
-	/// elsewhere <see cref="IAdConsentService.IsPrivacyOptionsRequired"/> is false and the row stays hidden.</summary>
-	public bool ShowPrivacyOptions => consent.IsPrivacyOptionsRequired();
+	/// elsewhere <see cref="IAdConsentService.IsPrivacyOptionsRequired"/> is false and the row stays hidden. The
+	/// <c>consent</c> constructor parameter itself is null when the active ads provider is not AdMob (UMP is
+	/// Google's own consent flow; see <c>DocScanner.AdsService</c>) -- then there is nothing to show either. Its
+	/// default value is required, not just the `?`: MAUI's DI only skips a constructor parameter for an
+	/// unregistered service when it has one, nullable reference annotations alone do not make it optional at
+	/// runtime.</summary>
+	public bool ShowPrivacyOptions => consent?.IsPrivacyOptionsRequired() ?? false;
 
 	[RelayCommand]
-	private void OpenPrivacyOptions() => consent.ShowPrivacyOptionsForm();
+	private void OpenPrivacyOptions() => consent?.ShowPrivacyOptionsForm();
 
 	// Keys shared with the screens that use them.
 	private const string CameraAutoKey = "camera_auto_capture", OpenModeKey = "document_open_mode", PdfQualityKey = "pdf_quality";

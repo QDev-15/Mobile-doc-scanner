@@ -777,3 +777,45 @@ MAUI không biết tới view đó nên không bao giờ đo/xếp kích thướ
 không đọc lại thư mục exports mỗi lần gõ. `ExportsPage.xaml` thêm `ToolbarItem` kính lúp (trang này vẫn dùng thanh Shell gốc, không như
 HomePage) + `SearchBar` ẩn/hiện theo `IsSearching`. Build qua, chưa có xác nhận hình ảnh trên máy owner (màn hình owner lúc đó bị cửa sổ nổi
 YouTube/Zalo che mất nút "PDF đã xuất").
+
+### Tách quảng cáo sang `DocScanner.AdsService`, thêm AppLovin (đợt 2026-10-07, owner yêu cầu sau khi tài khoản AdMob bị Google khoá)
+Owner: tài khoản AdMob bị Google đóng (kháng cáo chưa có phản hồi) -- quyết định chuyển sang AppLovin, nhưng yêu cầu làm đúng thứ tự: trước
+tiên tách code AdMob hiện có sang một project/service riêng (`DocScanner.AdsService`) để project khác sau này dùng lại được mà không phải
+viết lại, rồi mới thêm AppLovin vào cùng service đó -- cách dùng chỉ cần khai báo nhà quảng cáo nào + tham số của nhà đó.
+
+- **Kiến trúc**: project mới `DocScanner.AdsService` (net10.0-android, KHÔNG phải MAUI SingleProject -- tham chiếu thẳng
+  `Microsoft.Maui.Controls`/`.Compatibility` như NuGet thường, đúng cách chính `Plugin.AdMob` dựng, để có `View`/`ViewHandler<,>` mà không cần
+  cả bộ SDK MAUI app). Lớp ngoài cùng app thấy: `IAdsClient` (banner đã tải/chưa, interstitial sẵn sàng/chưa, `AreAdsEnabled` -- cờ bật/tắt
+  quảng cáo chung, generic, app tự set theo Pro). Bên trong: `Internal.IAdProvider` (hợp đồng mỗi nhà quảng cáo phải cài), `AdMobProvider`
+  (chuyển nguyên từ code cũ), `AppLovinProvider` (mới). Một lệnh duy nhất cho app: `builder.UseAdsService(new AdMobOptions(...))` hoặc
+  `new AppLovinOptions(...)` -- tự đăng ký provider đúng + `IAdsClient` + Handler cho `AdBannerSurface` (banner dùng chung toàn app, chuyển y
+  nguyên kỹ thuật "1 native view, qua Handler thật" từ đợt 2026-10-05). `DocScanner.Services.AdsService` (app-level) giờ CHỈ còn giữ policy
+  của riêng app này (Pro gating, luật "cứ 5 lần xuất PDF" trong `AdsPolicy`) và gọi xuống `IAdsClient` -- không còn biết AdMob hay AppLovin.
+- **AppLovin MAX 13.6.4** (bản mới nhất thật trên Maven Central lúc làm, kiểm bằng `maven-metadata.xml`, không đoán): bind thẳng bằng
+  `AndroidMavenLibrary` (tính năng .NET for Android 9+, không cần tự viết Binding project). API Java dùng trong `AppLovinProvider` được đọc
+  trực tiếp từ bytecode thật bằng `javap` (cùng kỷ luật dự án đã dùng cho Play In-App Update / AdView trước đây), không đoán theo tài liệu:
+  `AppLovinSdk.GetInstance(context).Initialize(config, listener)` (tên hàm là `Initialize`, KHÔNG phải `InitializeSdk`),
+  `MaxAdView(adUnitId, format).SetListener(...)`, `MaxInterstitialAd(adUnitId)`.
+- **2 lỗi binding thật gặp phải, cả hai đã sửa và build xác nhận lại**:
+  1. `MaxAd`/`MaxError` (và do đó `MaxAdListener`/`MaxAdViewAdListener`) không tự bind được, lặng lẽ bị bỏ qua không báo lỗi -- truy ra 3
+     thuộc tính lồng phức tạp (`getSize`/`getWaterfall`/`getNativeAd`) là nguyên nhân, không cái nào cần dùng, đã loại qua
+     `Transforms/Metadata.xml` (`remove-node`), giữ nguyên phần còn lại của 2 interface.
+  2. `androidx.browser:browser` (phụ thuộc bắc cầu của AppLovin) khai báo thẳng qua `AndroidMavenLibrary` thì build RIÊNG project này qua,
+     nhưng build CẢ APP lỗi trùng lớp (`D8`/`R8`: `android.support.customtabs.ICustomTabsCallback$Default` định nghĩa 2 lần) vì app đã có sẵn
+     `Xamarin.AndroidX.Browser` qua CameraX. Sửa: bỏ khai báo Maven thô, dùng đúng gói NuGet `Xamarin.AndroidX.Browser` chính thức thay thế
+     (cùng bản đã có sẵn trong cache NuGet của solution) -- bài học: build một project con qua không có nghĩa app ghép lại cũng qua, phải build
+     app thật mới bắt được lỗi trùng lớp kiểu này.
+- **Đã dọn 7 Java dependency khác** (Basement/Base/Tasks/Core/Annotation/Collection/Concurrent.Futures/Interpolator/Guava ListenableFuture)
+  bằng đúng gói NuGet mà MSBuild's Java Dependency Verification (XA4242) tự nêu tên, không đoán version (lấy từ cache NuGet cục bộ, khớp bản
+  đã dùng ở Plugin.AdMob/CameraX trong cùng solution).
+- **Đổi trong app**: `MauiProgram.cs` gọi `UseAdsService(new AdMobOptions(...))` thay cho `.UseAdMob(...)` + đăng ký handler tay; xoá
+  `Views/AdBannerSurface.cs` + `Platforms/Android/AdBannerSurfaceHandler.cs` cũ (chuyển hẳn vào thư viện); 10 trang XAML đổi
+  `<views:AdBannerSurface>` thành `<ads:AdBannerSurface>` (thêm `xmlns:ads` trỏ `DocScanner.AdsService`). `SettingsViewModel` nhận
+  `IAdConsentService? consent = null` (có giá trị mặc định, không chỉ `?`) vì UMP chỉ tồn tại khi dùng AdMob -- màn Cài đặt tự ẩn nút
+  "Tuỳ chọn quyền riêng tư" khi dùng nhà quảng cáo khác, không vỡ DI.
+- **Trạng thái hiện tại**: build xác nhận cả `DocScanner.AdsService` (riêng) lẫn `DocScanner.csproj` (cả app) 0 lỗi; `DocScanner.Core.Tests`
+  196/196 PASS không đổi. **Nhà quảng cáo đang hoạt động trong code vẫn là AdMob** (`AdMobOptions` trong `MauiProgram.cs`) dù AppLovin đã viết
+  xong và build qua -- CHƯA chuyển sang AppLovin vì chưa có khoá/ID thật (owner cần tự tạo tài khoản AppLovin, lấy SDK key + ad unit ID banner
+  + interstitial, giống bước đã làm cho AdMob trước đây). Khi có đủ, chuyển chỉ là đổi `new AdMobOptions(...)` thành
+  `new AppLovinOptions(sdkKey, bannerAdUnitId, interstitialAdUnitId)` trong `MauiProgram.cs`, không cần sửa gì khác.
+- Chưa build/cài thử bản Release hay chạy trên máy thật đợt này -- chỉ xác nhận bằng build Debug + unit test.

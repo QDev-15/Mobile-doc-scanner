@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:vm="clr-namespace:DocScanner.ViewModels"
     xmlns:views="clr-namespace:DocScanner.Views"
+    xmlns:ads="clr-namespace:DocScanner.AdsService;assembly=DocScanner.AdsService"
     x:DataType="vm:ResultViewModel"
     Title="{Binding Title}"
     BackgroundColor="{AppThemeBinding Light={StaticResource Surface}, Dark={StaticResource SurfaceDark}}">
@@ -201,7 +202,7 @@
                               Command="{Binding ToggleAspectCommand}" />
         </Grid>
 
-        <views:AdBannerSurface Grid.Row="4" />
+        <ads:AdBannerSurface Grid.Row="4" />
 
         <views:ExportOverlay Grid.RowSpan="5" />
     </Grid>

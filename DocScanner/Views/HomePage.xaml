@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:vm="clr-namespace:DocScanner.ViewModels"
     xmlns:views="clr-namespace:DocScanner.Views"
+    xmlns:ads="clr-namespace:DocScanner.AdsService;assembly=DocScanner.AdsService"
     x:DataType="vm:HomeViewModel"
     Shell.NavBarIsVisible="False"
     BackgroundColor="{AppThemeBinding Light={StaticResource Surface}, Dark={StaticResource SurfaceDark}}">
@@ -247,7 +248,7 @@
             <views:ToolButton Grid.Column="2" Icon="{x:Static views:Icons.Pdf}" Text="PDF đã xuất" Command="{Binding OpenExportsCommand}" />
         </Grid>
 
-        <views:AdBannerSurface Grid.Row="5" />
+        <ads:AdBannerSurface Grid.Row="5" />
 
         <views:ExportOverlay Grid.RowSpan="6" />
     </Grid>

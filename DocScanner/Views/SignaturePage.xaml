@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:vm="clr-namespace:DocScanner.ViewModels"
     xmlns:views="clr-namespace:DocScanner.Views"
+    xmlns:ads="clr-namespace:DocScanner.AdsService;assembly=DocScanner.AdsService"
     x:DataType="vm:SignatureViewModel"
     Title="Chữ ký"
     BackgroundColor="{AppThemeBinding Light={StaticResource Surface}, Dark={StaticResource SurfaceDark}}">
@@ -96,7 +97,7 @@
             <views:ToolButton x:Name="DoneButton" Grid.Column="2" Icon="{x:Static views:Icons.Check}" Text="Xong" IsActive="True" />
         </Grid>
 
-        <views:AdBannerSurface Grid.Row="3" />
+        <ads:AdBannerSurface Grid.Row="3" />
 
         <!-- Drawing pad -->
         <Grid Grid.RowSpan="4" IsVisible="{Binding IsDrawing}" BackgroundColor="#99000000">

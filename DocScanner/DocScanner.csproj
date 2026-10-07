@@ -118,6 +118,7 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\DocScanner.Core\DocScanner.Core.csproj" />
+		<ProjectReference Include="..\DocScanner.AdsService\DocScanner.AdsService.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>

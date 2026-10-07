@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:vm="clr-namespace:DocScanner.ViewModels"
     xmlns:views="clr-namespace:DocScanner.Views"
+    xmlns:ads="clr-namespace:DocScanner.AdsService;assembly=DocScanner.AdsService"
     x:DataType="vm:CropViewModel"
     Title="{Binding Title}"
     BackgroundColor="{AppThemeBinding Light={StaticResource Surface}, Dark={StaticResource SurfaceDark}}">
@@ -63,7 +64,7 @@
             </Button>
         </Grid>
 
-        <views:AdBannerSurface Grid.Row="3" />
+        <ads:AdBannerSurface Grid.Row="3" />
 
         <views:ExportOverlay Grid.RowSpan="4" />
     </Grid>

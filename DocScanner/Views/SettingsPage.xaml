@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:vm="clr-namespace:DocScanner.ViewModels"
     xmlns:views="clr-namespace:DocScanner.Views"
+    xmlns:ads="clr-namespace:DocScanner.AdsService;assembly=DocScanner.AdsService"
     x:DataType="vm:SettingsViewModel"
     Title="Cài đặt"
     BackgroundColor="{AppThemeBinding Light={StaticResource Surface}, Dark={StaticResource SurfaceDark}}">
@@ -117,6 +118,6 @@
         </VerticalStackLayout>
     </ScrollView>
 
-    <views:AdBannerSurface Grid.Row="1" />
+    <ads:AdBannerSurface Grid.Row="1" />
     </Grid>
 </ContentPage>

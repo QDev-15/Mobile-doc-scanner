@@ -1,3 +1,4 @@
+using DocScanner.AdsService;
 using DocScanner.Core;
 using DocScanner.Core.Licensing;
 using DocScanner.Services;
@@ -5,7 +6,6 @@ using DocScanner.ViewModels;
 using DocScanner.Views;
 using ImageCoreService;
 using Microsoft.Extensions.Logging;
-using Plugin.AdMob; // UseAdMob() extension (Plugin.AdMob.Config)
 
 namespace DocScanner;
 
@@ -16,17 +16,19 @@ public static class MauiProgram
 		// Stage timings to logcat (adb logcat -s DocScanPerf): cheap, and the only way to see real speeds on a phone.
 		Perf.Sink = line => Android.Util.Log.Info("DocScanPerf", line);
 		Perf.Log("startup: CreateMauiApp");
-
-		// Ads: test vs real is decided once, in AdsConfig.UseTestAds (Debug = test; Release = real unless the
-		// real IDs are placeholders). Every ad request below uses AdsConfig.BannerId / InterstitialId, which
-		// already resolve to the right pair, so the plugin flag here only mirrors that decision.
-		Plugin.AdMob.Configuration.AdConfig.UseTestAdUnitIds = AdsConfig.UseTestAds;
 		Perf.Log($"ads: {(AdsConfig.UseTestAds ? "TEST" : "REAL")} ad units, {AdsConfig.TestDeviceIds.Length} test device(s)");
 
 		var builder = MauiApp.CreateBuilder();
 		builder
 			.UseMauiApp<App>()
-			.UseAdMob(androidDefaultBannerAdUnitId: AdsConfig.BannerId, androidDefaultInterstitialAdUnitId: AdsConfig.InterstitialId)
+			// Ad provider: AdMob for now (known-good; AppLovin's binding is written in DocScanner.AdsService but
+			// not yet build-verified end to end -- see CLAUDE.md). Switching providers later is only changing
+			// which options record is constructed here, nothing else in the app.
+			.UseAdsService(new AdMobOptions(
+				BannerAdUnitId: AdsConfig.BannerId,
+				InterstitialAdUnitId: AdsConfig.InterstitialId,
+				UseTestAds: AdsConfig.UseTestAds,
+				TestDeviceIds: AdsConfig.TestDeviceIds))
 			.ConfigureFonts(fonts =>
 			{
 				fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
@@ -36,7 +38,6 @@ public static class MauiProgram
 			.ConfigureMauiHandlers(handlers =>
 			{
 				handlers.AddHandler<Views.PdfScrollSurface, Views.PdfScrollSurfaceHandler>();
-				handlers.AddHandler<Views.AdBannerSurface, Views.AdBannerSurfaceHandler>();
 			});
 
 		builder.Services.AddSingleton(_ => new DocumentStore(Path.Combine(FileSystem.AppDataDirectory, "documents")));
@@ -61,7 +62,9 @@ public static class MauiProgram
 		builder.Services.AddSingleton<ExportCoordinator>();
 		builder.Services.AddSingleton<IDownloadsService, AndroidDownloadsService>();
 		builder.Services.AddSingleton<ILicenseService, LicenseService>();
-		builder.Services.AddSingleton<IAdsService, AdsService>();
+		// Fully qualified: the "DocScanner.AdsService" namespace (the ads library) and this app's own
+		// "DocScanner.Services.AdsService" class share a name, so unqualified "AdsService" here is ambiguous.
+		builder.Services.AddSingleton<IAdsService, DocScanner.Services.AdsService>();
 		builder.Services.AddSingleton<PermissionService>();
 		builder.Services.AddSingleton<ImportCoordinator>();
 

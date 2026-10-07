@@ -1,0 +1,24 @@
+<metadata>
+  <!-- com.applovin.impl.* (AppLovin's own internal implementation classes) and com.applovin.shadow.* (OkHttp /
+       Okio, relocated internally by AppLovin to avoid conflicting with a host app's own copies) are never
+       called from outside the SDK: by Java convention "impl"/"shadow" packages are implementation detail, not
+       public API. The auto-binder cannot cleanly bind several of their Kotlin-compiled interface overrides
+       (covariant return types it cannot match), which only matters if something tries to bind them at all. The
+       actual public API this provider calls (com.applovin.sdk.*, com.applovin.mediation.*) does not depend on
+       these being bound: Java bytecode resolves its own internals at the JVM level regardless of whether a
+       C# binding exists for them. -->
+  <remove-node path="/api/package[starts-with(@name, 'com.applovin.impl')]" />
+  <remove-node path="/api/package[starts-with(@name, 'com.applovin.shadow')]" />
+
+  <!-- com.applovin.mediation.MaxAd / MaxError (confirmed via javap on the real classes.jar, 2026-10-07) failed
+       to auto-bind, which silently cascaded into MaxAdListener / MaxAdViewAdListener / MaxAdView.setListener
+       never being generated either (their signatures reference MaxAd/MaxError). Suspected cause: MaxAd.getSize()
+       (-> com.applovin.sdk.AppLovinSdkUtils$Size), .getWaterfall() (-> MaxAdWaterfallInfo) and .getNativeAd()
+       (-> com.applovin.mediation.nativeAds.MaxNativeAd) are themselves not cleanly bindable. None of the three
+       are needed for basic banner/interstitial load state, so they are dropped here rather than the whole
+       interface, which should let the rest of MaxAd/MaxError (and therefore MaxAdListener) bind normally. -->
+  <remove-node path="/api/package[@name='com.applovin.mediation']/interface[@name='MaxAd']/method[@name='getSize']" />
+  <remove-node path="/api/package[@name='com.applovin.mediation']/interface[@name='MaxAd']/method[@name='getWaterfall']" />
+  <remove-node path="/api/package[@name='com.applovin.mediation']/interface[@name='MaxAd']/method[@name='getNativeAd']" />
+  <remove-node path="/api/package[@name='com.applovin.mediation']/interface[@name='MaxError']/method[@name='getWaterfall']" />
+</metadata>
