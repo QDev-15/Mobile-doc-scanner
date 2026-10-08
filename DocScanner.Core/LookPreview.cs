@@ -61,11 +61,17 @@ public sealed class LookPreview
             {
                 if (look.Method == BinarizationMethod.Otsu)
                     return new PreviewFrame(null, DocumentFilter.Apply(Page, look, Dpi).Gray!); // rare; not worth a cached path
+                // Sauvola và NICK đều chỉ cần mean/độ lệch chuẩn của cửa sổ (SauvolaStats, tên gọi lịch sử nhưng
+                // không riêng cho Sauvola) nên dùng chung đường nhanh này -- kéo thanh "đậm nhạt" chỉ tính lại
+                // phép so sánh ngưỡng, không quét lại ảnh.
                 GrayImage source = ThresholdSource(look);
                 SauvolaStats stats = Stats(look);
                 var bw = new GrayImage(source.Width, source.Height);
-                Binarizer.Threshold(source, stats, DocumentFilter.SauvolaKFor(look.Darkness), look.Tone.BrightnessLevels, bw,
-                    look.Smooth ? DocumentFilter.SmoothRamp : 0);
+                double ramp = look.Smooth && look.Method != BinarizationMethod.Otsu ? DocumentFilter.SmoothRamp : 0;
+                if (look.Method == BinarizationMethod.Nick)
+                    Binarizer.NickThreshold(source, stats, DocumentFilter.NickKFor(look.Darkness), look.Tone.BrightnessLevels, bw, ramp);
+                else
+                    Binarizer.Threshold(source, stats, DocumentFilter.SauvolaKFor(look.Darkness), look.Tone.BrightnessLevels, bw, ramp);
                 if (look.Despeckle) DocumentFilter.Despeckle(bw, Dpi);
                 return new PreviewFrame(null, bw);
             }

@@ -48,6 +48,24 @@
          checked on Maven Central, no further transitive deps of its own (empty dependencies list in its POM). -->
     <AndroidMavenLibrary Include="com.unity3d.ads-mediation:mediation-sdk" Version="9.6.1" />
     <AndroidMavenLibrary Include="com.unity3d.ads-mediation:adquality-sdk" Version="9.10.0" Bind="false" />
+    <!-- mediation-sdk above is only the LevelPlay mediation LAYER: by itself it has zero ad networks wired in,
+         so every load request waterfalls through nothing and silently never fills (confirmed on-device via
+         logcat: "isInitialized=false" immediately followed by a warning naming "com.unity3d.ads.UnityAds" -
+         LevelPlay's own adapter-loader probing the classpath for the network adapter and finding it absent).
+         Unity Ads is Unity's own first-party network and the one every LevelPlay app is expected to ship at
+         minimum; adding it requires BOTH the adapter and the base SDK (confirmed via Unity's own docs). Latest
+         versions on Maven Central as of 2026-10-08 (maven-metadata.xml, not guessed). Bind="false" on both:
+         LevelPlay talks to Unity Ads internally (service-loader/reflection), our C# never calls either API
+         directly, so we only need the classes present on the classpath, not bound into C#. -->
+    <AndroidMavenLibrary Include="com.unity3d.ads-mediation:unityads-adapter" Version="5.14.0" Bind="false" />
+    <AndroidMavenLibrary Include="com.unity3d.ads:unity-ads" Version="4.21.0" Bind="false" />
+    <!-- unity-ads above has 3 transitive deps with no Microsoft-maintained NuGet (XA4241, not XA4242): added
+         raw, Bind="false", same reasoning as the rest of this ItemGroup. Version pinned to the range unity-ads
+         4.21.0's own POM declares ([0.2.0,0.3.0) -> 0.2.0, the latest on Maven Central). -->
+    <AndroidMavenLibrary Include="androidx.datastore:datastore" Version="1.0.0" Repository="Google" Bind="false" />
+    <AndroidMavenLibrary Include="androidx.datastore:datastore-core" Version="1.0.0" Repository="Google" Bind="false" />
+    <AndroidMavenLibrary Include="com.google.protobuf:protobuf-kotlin-lite" Version="3.25.6" Bind="false" />
+    <AndroidMavenLibrary Include="com.unity3d.coherence:coherencelib" Version="0.2.0" Bind="false" />
   </ItemGroup>
 
   <ItemGroup>
@@ -69,6 +87,21 @@
     <!-- For Unity LevelPlay's kotlin-stdlib dependency (XA4242); 2.4.0.1 because Xamarin.AndroidX.Core 1.19.0.1
          (above) already requires at least that version transitively (NU1605 named the exact floor). -->
     <PackageReference Include="Xamarin.Kotlin.StdLib" Version="2.4.0.1" />
+    <!-- Same reasoning, named by XA4242 when adding the Unity Ads network adapter + base SDK above. -->
+    <PackageReference Include="Xamarin.AndroidX.Activity.Ktx" Version="1.13.0.1" />
+    <PackageReference Include="Xamarin.AndroidX.Core.Core.Ktx" Version="1.19.0.1" />
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.Process" Version="2.11.0.1" />
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.Runtime.Ktx" Version="2.11.0.1" />
+    <PackageReference Include="Xamarin.AndroidX.Startup.StartupRuntime" Version="1.2.0.8" />
+    <PackageReference Include="Xamarin.AndroidX.WebKit" Version="1.17.0" />
+    <PackageReference Include="Xamarin.KotlinX.Coroutines.Android" Version="1.11.0.1" />
+    <PackageReference Include="Xamarin.Kotlin.StdLib.Jdk8" Version="2.4.0.1" />
+    <PackageReference Include="Square.OkHttp3" Version="5.5.0" />
+    <PackageReference Include="Xamarin.AndroidX.Work.Work.Runtime.Ktx" Version="2.11.2.1" />
+    <PackageReference Include="Xamarin.GooglePlayServices.CroNet" Version="118.1.1.4" />
+    <PackageReference Include="Xamarin.Protobuf.JavaLite" Version="4.35.1.1" />
+    <PackageReference Include="Xamarin.KotlinX.Coroutines.Core" Version="1.11.0.1" />
+    <PackageReference Include="Xamarin.KotlinX.Coroutines.Core.Jvm" Version="1.11.0.1" />
   </ItemGroup>
 
 </Project>

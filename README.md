@@ -13,10 +13,10 @@ Repo này mới được tách ra từ một monorepo lớn hơn (2026-10-06); c
 |---|---|
 | `DocScanner` | App MAUI (Android): UI, ViewModel, tích hợp camera/AdMob/Play Billing. |
 | `DocScanner.Core` | Logic không phụ thuộc platform (net9.0, test được trên PC): mô hình tài liệu, lưu trữ, pipeline nhập/xuất. |
-| `DocScanner.Shared` | Thuật toán ảnh thuần managed (net9.0): dò mép giấy, nắn phối cảnh, Sauvola/Otsu, PNG writer... (namespace vẫn `ImageCoreService` vì lịch sử, xem CLAUDE.md). |
+| `DocScanner.Shared` | Thuật toán ảnh thuần managed (net9.0): dò mép giấy, nắn phối cảnh, Sauvola/Otsu/NICK, PNG writer... (namespace vẫn `ImageCoreService` vì lịch sử, xem CLAUDE.md). |
 | `DocScanner.Core.Tests` | Unit test xUnit cho `DocScanner.Core` (và gián tiếp `DocScanner.Shared` qua test tích hợp). |
-| `DocScanner.Shared.Tests` | Unit test xUnit riêng cho `DocScanner.Shared` (dò mép giấy qua cảnh giả lập, nắn phối cảnh, Sauvola, PngWriter...). |
-| `DocScanner.AdsService` | Quảng cáo đa nhà cung cấp, dùng lại được ở project khác (banner/interstitial, hiện có AdMob + AppLovin). Xem CLAUDE.md đợt 2026-10-07. |
+| `DocScanner.Shared.Tests` | Unit test xUnit riêng cho `DocScanner.Shared` (dò mép giấy qua cảnh giả lập, nắn phối cảnh, Sauvola/NICK, PngWriter...). |
+| `DocScanner.AdsService` | Quảng cáo đa nhà cung cấp, dùng lại được ở project khác (banner/interstitial; hỗ trợ AdMob/AppLovin/Unity LevelPlay, đang BẬT LevelPlay). Xem CLAUDE.md đợt 2026-10-08. |
 
 ## Build & test
 

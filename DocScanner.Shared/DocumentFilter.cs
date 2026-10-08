@@ -20,7 +20,9 @@ public sealed record FilterOptions(
     int Darkness = FilterOptions.DefaultDarkness,
     bool CleanBackground = true,
     bool Despeckle = true,
-    BinarizationMethod Method = BinarizationMethod.Sauvola,
+    // Tạm đổi mặc định sang NICK (đợt 2026-10-08) để owner tự xem kết quả trên ảnh thật -- owner chọn cách này
+    // thay vì thêm nút chọn trong Settings. Đổi lại Sauvola nếu không ưng, hoặc giữ nếu thấy tốt hơn.
+    BinarizationMethod Method = BinarizationMethod.Nick,
     bool Sharpen = true,
     bool Smooth = true)
 {
@@ -65,6 +67,12 @@ public static class DocumentFilter
 
     /// <summary>Otsu threshold shift for a darkness setting (+/- 40 levels).</summary>
     public static int OtsuOffsetFor(int darkness) => (int)Math.Round((Math.Clamp(darkness, 0, 100) - 50) * 0.8);
+
+    /// <summary>Hệ số k của NICK ứng với "đậm nhạt": 50 -> -0.15 (mặc định, xem <see cref="Binarizer.DefaultNickK"/>),
+    /// 0 -> -0.2 (mảnh, sạch), 100 -> -0.1 (đậm, giữ cả nét mờ). Dấu đi ngược <see cref="SauvolaKFor"/> vì công
+    /// thức NICK cộng thẳng k*độ lệch chuẩn vào ngưỡng (k gần 0 hơn -> ngưỡng cao hơn -> nhiều mực hơn) thay vì
+    /// nhân như Sauvola (k lớn hơn -> ngưỡng thấp hơn -> ít mực hơn).</summary>
+    public static double NickKFor(int darkness) => -0.2 + 0.001 * Math.Clamp(darkness, 0, 100);
 
     /// <summary>Anti-aliasing of a smooth black-and-white page: gray levels either side of the threshold that get a
     /// partial gray (<see cref="Binarizer.Shade"/>). About a third of a pixel of soft edge on a phone photo.</summary>
@@ -126,10 +134,15 @@ public static class DocumentFilter
             default:
             {
                 GrayImage gray = BlackWhiteSource(page, o, dpi);
-                bool smooth = o.Smooth && o.Method == BinarizationMethod.Sauvola;
-                GrayImage bin = o.Method == BinarizationMethod.Otsu
-                    ? Binarizer.Threshold(gray, Math.Clamp(Binarizer.OtsuThreshold(gray) + OtsuOffsetFor(o.Darkness) - (int)MathF.Round(o.Tone.BrightnessLevels), 1, 254))
-                    : Binarizer.Sauvola(gray, Binarizer.DefaultWindow(dpi), SauvolaKFor(o.Darkness), o.Tone.BrightnessLevels, smooth ? SmoothRamp : 0);
+                // Viền khử răng cưa (ramp) hợp với ngưỡng cục bộ (Sauvola/NICK, đổi mượt theo từng điểm ảnh) --
+                // Otsu là ngưỡng toàn trang duy nhất nên không có gì để "mượt" theo.
+                bool smooth = o.Smooth && o.Method != BinarizationMethod.Otsu;
+                GrayImage bin = o.Method switch
+                {
+                    BinarizationMethod.Otsu => Binarizer.Threshold(gray, Math.Clamp(Binarizer.OtsuThreshold(gray) + OtsuOffsetFor(o.Darkness) - (int)MathF.Round(o.Tone.BrightnessLevels), 1, 254)),
+                    BinarizationMethod.Nick => Binarizer.Nick(gray, Binarizer.DefaultWindow(dpi), NickKFor(o.Darkness), o.Tone.BrightnessLevels, smooth ? SmoothRamp : 0),
+                    _ => Binarizer.Sauvola(gray, Binarizer.DefaultWindow(dpi), SauvolaKFor(o.Darkness), o.Tone.BrightnessLevels, smooth ? SmoothRamp : 0),
+                };
                 if (o.Despeckle) Despeckle(bin, dpi);
                 return new FilteredPage { Gray = bin, IsBilevel = !smooth, IsBlackWhite = true };
             }

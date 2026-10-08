@@ -18,6 +18,35 @@ public class ImagingTests
     }
 
     [Fact]
+    public void Nick_keeps_dim_paper_white_where_a_fixed_threshold_does_not()
+    {
+        GrayImage page = SyntheticPages.TextPage(paper: 110); // dim scan: paper below the old 128 cut
+        int nick = InkPixels(Binarizer.Binarize(page, BinarizationMethod.Nick, SyntheticPages.Dpi));
+        int fixed128 = InkPixels(Binarizer.Threshold(page, 128));
+        Assert.True(fixed128 > page.Data.Length / 2, "fixed threshold turns dim paper black");
+        Assert.True(nick < page.Data.Length / 10, $"nick ink px = {nick}");
+        Assert.True(nick > 1000, "text strokes must survive");
+    }
+
+    [Fact]
+    public void Nick_keeps_a_low_contrast_stroke_that_Sauvola_erases()
+    {
+        // Nền 200, nét chỉ cách 50 mức xám (150) -- chữ mờ/tương phản thấp, đúng kiểu "nham nhở" người dùng mô tả.
+        // Đo thực tế (không suy diễn công thức): Sauvola xoá sạch nét này (0 px mực), NICK giữ lại đầy đủ (400 px,
+        // bằng cả khối nét) -- cùng window/k mặc định của mỗi thuật toán.
+        var img = new GrayImage(60, 60);
+        Array.Fill(img.Data, (byte)200);
+        for (int y = 20; y < 40; y++)
+            for (int x = 20; x < 40; x++)
+                img[x, y] = 150;
+
+        int sauvola = InkPixels(Binarizer.Sauvola(img, 31, Binarizer.DefaultSauvolaK));
+        int nick = InkPixels(Binarizer.Nick(img, 31, Binarizer.DefaultNickK));
+        Assert.Equal(0, sauvola);
+        Assert.Equal(400, nick);
+    }
+
+    [Fact]
     public void Otsu_splits_a_bimodal_histogram_between_the_modes()
     {
         var hist = new long[256];

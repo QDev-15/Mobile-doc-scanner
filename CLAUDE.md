@@ -893,3 +893,93 @@ font dự phòng hệ thống (trùng mã Unicode Private Use Area với một f
 - **Owner cần làm**: bản đang cài trên máy (`versionCode=3`) là bản build TRƯỚC khi phát hiện lỗi này, vẫn còn lỗi --
   cần `adb uninstall btk.docscanner` rồi cài lại bằng bản vừa build sạch (hoặc build mới theo đúng `Build_aab.md` đã
   cập nhật) mới hết hiện tượng chữ Hán.
+
+### Thêm thuật toán nhị phân hoá NICK, chọn làm mặc định tạm thời (đợt 2026-10-08 tiếp)
+Owner báo thuật toán đen-trắng hiện tại (Sauvola) tạo chữ "không được nét, hay bị nham nhở" -- tức là mất/đứt nét ở
+chữ mờ, tương phản thấp với nền. Research tài liệu học thuật (benchmark DIBCO) chỉ ra NICK (Khurshid và cộng sự,
+2009) cho nét đều hơn Sauvola đúng loại ảnh này, nên code thử để owner tự xem kết quả.
+
+- **Công thức lấy nhầm lúc đầu, tự bắt được qua unit test**: bản đầu `T = m + k*sqrt(variance)` (Niblack gốc, không
+  phải NICK thật) -- unit test "giữ trắng giấy mờ" (`Nick_keeps_dim_paper_white_...`, viết theo đúng mẫu test Sauvola
+  đã có) FAIL ngay: trên vùng giấy phẳng tuyệt đối (variance = 0), T = m đúng bằng giá trị nền, phép so sánh `<=`
+  biến cả nền thành mực đen (588520/880000 px mực, hỏng hoàn toàn). Tra lại đúng mã nguồn thật của thư viện Doxa
+  (`Nick.hpp`, một thư viện nhị phân hoá ảnh được dùng rộng rãi) thay vì tin mô tả rút gọn trong tài liệu tổng hợp:
+  công thức đúng là `T = m + k*sqrt(variance + m^2)` -- số hạng `m^2` cộng thêm trong căn chính là phần NICK sửa
+  lỗi nền phẳng của Niblack (trên nền phẳng, T xấp xỉ `m*(1+k)`, luôn thấp hơn m rõ rệt vì k âm, không bao giờ
+  bằng đúng m). Sửa lại đúng công thức, test pass.
+- **Bài học**: với công thức toán học lấy từ research/tài liệu bên ngoài, luôn viết unit test biên (ở đây là trường
+  hợp "ảnh phẳng tuyệt đối") TRƯỚC khi tin bất kỳ công thức nào -- một mô tả tưởng chừng rõ ràng ("T = m + k*s") có
+  thể là bản rút gọn thiếu mất 1 số hạng quan trọng. Không nên suy luận hành vi thuật toán bằng tính tay (đã tính
+  tay cho một kịch bản "chữ mờ" cụ thể trước khi phát hiện công thức sai, kết luận "NICK không bị co như Sauvola
+  vì công thức cộng thay vì nhân" -- sai hoàn toàn sau khi sửa công thức, vì bản chất cả hai đều "co lại" trên nền
+  phẳng, chỉ co ở mức độ khác nhau). Thay vào đó, dựng kịch bản tổng hợp rồi CHẠY THẬT để đo số liệu (xem mục dưới).
+- **So sánh thật bằng cách chạy code, không suy diễn**: dựng ảnh tổng hợp (nền 200, khối nét vuông với nhiều mức
+  tương phản khác nhau), đo thật số pixel mực bằng Sauvola/NICK mặc định ở từng mức. Kết quả: tương phản cao
+  (nét 110) cả hai giữ đủ; tương phản rất thấp (170, 190) cả hai đều mất; nhưng ở MỘT khoảng tương phản giữa (nét
+  150, cách nền 50 mức xám) Sauvola mất trắng hoàn toàn (0 px) trong khi NICK giữ đủ 100% (400 px) -- đúng khoảng
+  "chữ mờ nhưng còn đọc được bằng mắt" mà owner mô tả. Dùng chính kịch bản `stroke=150` này làm unit test cuối
+  cùng (`Nick_keeps_a_low_contrast_stroke_that_Sauvola_erases`) vì đã đo thật, không phải đoán.
+- `DocScanner.Shared/Binarizer.cs`: thêm `BinarizationMethod.Nick`, `DefaultNickK = -0.15` (giữa khoảng [-0.2,-0.1]
+  tài liệu khuyến nghị, cùng cách chọn DefaultSauvolaK = 0.34), `Nick(...)` (3 overload, cùng kiểu Sauvola, dùng
+  chung `Scan<TSink>`), `NickSink`, và `NickThreshold(src, stats, k, offset, dst, ramp)` -- bản dùng `SauvolaStats`
+  đã tính sẵn (mean/deviation), vì NICK cũng chỉ cần đúng 2 số đó, để màn xem trước dùng chung đường nhanh với
+  Sauvola (không cần quét lại ảnh khi kéo thanh đậm-nhạt).
+- `DocScanner.Shared/DocumentFilter.cs`: thêm `NickKFor(darkness)` (50 -> -0.15, 0 -> -0.2 mảnh, 100 -> -0.1 đậm --
+  chiều ngược SauvolaKFor vì công thức khác dấu/kiểu). `Apply()` chuyển từ `? :` sang `switch` 3 nhánh. Điều kiện
+  `smooth` (viền khử răng cưa) đổi từ "chỉ Sauvola" thành "khác Otsu" -- NICK cũng là ngưỡng cục bộ như Sauvola nên
+  cũng hợp viền mượt, chỉ Otsu (ngưỡng toàn trang) là không có gì để mượt theo.
+- `DocScanner.Core/LookPreview.cs`: nhánh nhanh (dùng `SauvolaStats` cache) mở rộng cho cả NICK, chỉ Otsu còn đi
+  đường chậm (tính lại từ đầu) như cũ -- lý do nằm ở comment tại chỗ.
+- **Owner chọn cách xem kết quả**: đổi thẳng `FilterOptions.Method` mặc định từ `Sauvola` sang `Nick` (thay vì thêm
+  nút chọn trong Settings) để lần quét/xem tiếp theo trên máy tự dùng NICK -- không cần sửa gì ở UI. Nếu owner thấy
+  không ưng hoặc muốn so sánh thêm, đổi lại `BinarizationMethod.Sauvola` ở đúng dòng đó
+  (`DocScanner.Shared/DocumentFilter.cs`, `FilterOptions` record).
+- Build xác nhận: `DocScanner.Shared.Tests` 137/137 PASS, `DocScanner.Core.Tests` 196/196 PASS, `DocScanner.csproj`
+  (cả app) 0 lỗi. Chưa chạy thử trên máy thật với ảnh chụp thật -- owner tự quét 1 tài liệu để xem trực tiếp.
+
+### LevelPlay không hiện quảng cáo: thiếu adapter Unity Ads, đã sửa 1 phần -- còn 1 phần chưa rõ nguyên nhân (đợt 2026-10-08 tiếp)
+Owner báo cài bản LevelPlay lên máy thật, không thấy banner/interstitial hiện ra. `adb logcat` lúc đó cho thấy
+`LevelPlay.init()`, `LevelPlayBannerAdView.loadAd()`, `LevelPlayInterstitialAd.loadAd()` đều được gọi đúng appKey/ad
+unit ID -- nhưng ngay sau `isInitialized=false` có 1 dòng `W LevelPlaySDK: INTERNAL: sg b - com.unity3d.ads.UnityAds`
+(mã đã bị R8 làm rối nhưng tên lớp Java vẫn còn nguyên trong message).
+
+- **Nguyên nhân tìm được (đã sửa, chắc chắn đúng)**: `DocScanner.AdsService.csproj` lúc đó chỉ khai
+  `com.unity3d.ads-mediation:mediation-sdk` (tầng mediation của LevelPlay) + `adquality-sdk` -- đây CHỈ LÀ CÁI KHUNG,
+  tự nó không có một mạng quảng cáo thật nào cả. Dòng log trên chính là LevelPlay tự kiểm tra classpath có lớp
+  `com.unity3d.ads.UnityAds` (adapter mạng Unity Ads, mạng quảng cáo riêng của Unity, mạng tối thiểu mọi app LevelPlay
+  cần có) hay không, và không thấy. Không có adapter nào thì request load không có gì để chạy waterfall, im lặng
+  không bao giờ fill, không bao giờ lỗi -- đúng khớp triệu chứng "chạy nhưng không có log kết quả gì" quan sát được.
+  Xác nhận qua docs chính thức Unity (không đoán): cần thêm CẢ `com.unity3d.ads-mediation:unityads-adapter` lẫn
+  `com.unity3d.ads:unity-ads` (adapter gọi tới base SDK, thiếu 1 trong 2 không đủ).
+- Thêm 2 dòng `AndroidMavenLibrary` đó kéo theo một chuỗi lỗi `XA4242`/`XA4241` dài (do cây transitive dependency của
+  `unity-ads` rất lớn: `androidx.activity-ktx`, `core-ktx`, `lifecycle-process`, `lifecycle-runtime-ktx`,
+  `startup-runtime`, `webkit`, `kotlinx-coroutines-android`+`-core`+`-core-jvm`, `kotlin-stdlib-jdk8`, `okhttp`,
+  `work-runtime-ktx`, `play-services-cronet`, `protobuf-kotlin-lite`+`protobuf-javalite`, `androidx.datastore`+
+  `datastore-core`, `com.unity3d.coherence:coherencelib`) -- sửa từng lỗi bằng đúng cách đã làm ở đợt AppLovin/
+  LevelPlay đầu tiên: `XA4242` thì dùng đúng NuGet được compiler gợi ý (tra version mới nhất qua
+  `api.nuget.org/v3-flatcontainer/.../index.json`, không đoán); `XA4241` (không có NuGet nào match) thì khai raw
+  `AndroidMavenLibrary Bind="false"`. Hai gói `androidx.datastore:datastore` + `datastore-core` không có trên Maven
+  Central (404), phải thêm `Repository="Google"` mới tải được (cùng kiểu với `play-services-ads-identifier`/
+  `play-services-appset` của AppLovin đợt trước). Build `DocScanner.AdsService` riêng rồi build cả `DocScanner.csproj`
+  đều 0 lỗi, không có xung đột trùng lớp D8/R8 nào như vụ `androidx.browser` của AppLovin.
+- Cài bản mới lên máy thật, xoá log cũ, mở lại app: dòng cảnh báo `com.unity3d.ads.UnityAds` đã biến mất (xác nhận
+  đúng nguyên nhân), log thấy thêm `UnityAds: ... Wrote file: UnityAdsStorage-public-data.json` (adapter Unity Ads
+  giờ có chạy thật). Nhưng sau dòng `X7 a - Adding lifecycle event observer` (~400ms sau khi init) thì toàn bộ log
+  `LevelPlaySDK` dừng hẳn, không có thêm bất kỳ dòng nào nữa dù đã đợi tới ~70 giây -- không thấy log nào cho biết ad
+  unit load thành công hay thất bại. Có 4 dòng lạ ngay sau đó: `D sdk5Events: logEvent failed eventsTracker doesn't
+  exist` -- có vẻ 1 phần nội bộ của SDK (bộ theo dõi sự kiện) không được tạo đúng, nhưng không tìm thấy tài liệu/case
+  nào khớp hoàn toàn khi tra cứu.
+- **Lưu ý khi test lần debug này: máy thật bị khoá màn hình (`isKeyguardShowing=true`, `mWakefulness=Dozing`) suốt
+  hơn 1 lần chờ log** -- app vẫn ở trạng thái "Resumed" theo ActivityManager nhưng `OnAppearing`/ViewModel của
+  HomePage chưa chạy, nên không thấy log `LevelPlay.init()` gì cả (dễ nhầm là ads không init). Mở khoá bằng
+  `adb shell wm dismiss-keyguard` (máy này không có khoá bảo mật, lệnh ăn ngay) + `input keyevent KEYCODE_WAKEUP` thì
+  app chạy tiếp bình thường tới `LevelPlay.init()`. **Luôn kiểm tra màn hình có khoá không trước khi kết luận app bị
+  treo/không init được gì** -- dễ nhầm lẫn, tốn thời gian.
+- **Trạng thái còn mở, chưa xác định được nốt nguyên nhân cuối**: đã sửa chắc chắn lỗi thiếu adapter (nguyên nhân có
+  bằng chứng rõ ràng, build + log xác nhận trước/sau khác nhau đúng như dự đoán), nhưng sau khi sửa, load vẫn không
+  trả về kết quả gì (không fill, cũng không fail) -- nghi nhiều khả năng nằm ở phía dashboard LevelPlay chứ không còn
+  là lỗi code: ví dụ ad unit được tạo nhưng chưa có "instance"/network nào (Unity Ads) được bật thật sự trong waterfall
+  của ad unit đó (tạo ad unit "Active" không đồng nghĩa có network nào gắn vào nó), hoặc app/tài khoản còn đang ở
+  trạng thái cần thêm bước xác nhận khác trên dashboard. **Owner cần tự vào LevelPlay dashboard, mở từng ad unit
+  (Banner `dc8xtbcrecuhnlop`, Interstitial `0syfvxfg425xbspt`), kiểm tra mục network/instance có "Unity Ads" đang bật
+  không** -- đây là phần Claude không xem được (cần đăng nhập tài khoản owner).

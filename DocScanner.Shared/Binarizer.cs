@@ -8,6 +8,15 @@ public enum BinarizationMethod
     [System.ComponentModel.Description("Sauvola (thích nghi)")] Sauvola,
     /// <summary>Single global threshold (Otsu, 1979). Faster; fine for clean, evenly lit pages.</summary>
     [System.ComponentModel.Description("Otsu (toàn trang)")] Otsu,
+    /// <summary>Ngưỡng thích nghi NICK (Khurshid và cộng sự, 2009) -- cùng họ cục bộ (local) với Sauvola, công thức
+    /// T = m + k*sqrt(variance + m^2) (xem lý do có số hạng m^2 ở <see cref="NickSink"/>). Trên benchmark DIBCO
+    /// cho tài liệu cũ/mờ, NICK cho nét đều hơn Sauvola đúng loại ảnh "chữ không nét, nham nhở" (độ tương phản
+    /// thấp) -- khác biệt tới từ việc ngưỡng NICK nằm gần trung bình nền hơn Sauvola một chút ở mọi mức độ tương
+    /// phản (k âm nhỏ hơn về độ lớn, xem <see cref="DefaultNickK"/> so với <see cref="DefaultSauvolaK"/>), không
+    /// phải vì công thức "cộng thay vì nhân" như suy luận ban đầu (suy luận đó dựa trên công thức Niblack gốc,
+    /// không phải NICK thật -- NICK thêm m^2 chính là phần sửa lỗi nền phẳng của Niblack). Đổi lại: cần chỉnh k
+    /// riêng, không dùng chung thang k với Sauvola.</summary>
+    [System.ComponentModel.Description("NICK (nét chữ đều, hợp ảnh mờ/tương phản thấp)")] Nick,
 }
 
 /// <summary>
@@ -28,12 +37,20 @@ public static class Binarizer
     public static GrayImage Binarize(GrayImage src, BinarizationMethod method, int dpi,
         double sauvolaK = DefaultSauvolaK, int windowSize = 0)
     {
-        return method == BinarizationMethod.Otsu
-            ? Threshold(src, OtsuThreshold(src))
-            : Sauvola(src, windowSize > 0 ? windowSize : DefaultWindow(dpi), sauvolaK);
+        int window = windowSize > 0 ? windowSize : DefaultWindow(dpi);
+        return method switch
+        {
+            BinarizationMethod.Otsu => Threshold(src, OtsuThreshold(src)),
+            BinarizationMethod.Nick => Nick(src, window, DefaultNickK),
+            _ => Sauvola(src, window, sauvolaK),
+        };
     }
 
     public const double DefaultSauvolaK = 0.34;
+
+    /// <summary>Giữa khoảng [-0.2, -0.1] mà tài liệu NICK khuyến nghị (xem <see cref="BinarizationMethod.Nick"/>) --
+    /// chọn tương tự cách DefaultSauvolaK = 0.34 là giá trị giữa đã tinh chỉnh, không phải hai đầu khoảng.</summary>
+    public const double DefaultNickK = -0.15;
 
     /// <summary>~1/8 inch window: a few text strokes wide at any DPI.</summary>
     public static int DefaultWindow(int dpi) => Math.Clamp((int)Math.Round(dpi / 8.0) | 1, 15, 151);
@@ -95,6 +112,23 @@ public static class Binarizer
         return dst;
     }
 
+    /// <summary>NICK với cửa sổ vuông <paramref name="window"/> (xem <see cref="BinarizationMethod.Nick"/>).</summary>
+    public static GrayImage Nick(GrayImage src, int window, double k) => Nick(src, window, k, 0);
+
+    /// <param name="offset">Dịch ngưỡng theo mức xám, giống tham số cùng tên của <see cref="Sauvola(GrayImage,int,double,double)"/>:
+    /// dương = ít nét/mảnh hơn (trang sáng hơn), âm = nhiều mực hơn. Trừ thẳng vào ngưỡng sau khi tính xong công
+    /// thức NICK: t = m + k*sqrt(s^2 + m^2) - offset (xem <see cref="NickSink"/>).</param>
+    public static GrayImage Nick(GrayImage src, int window, double k, double offset) => Nick(src, window, k, offset, 0);
+
+    /// <param name="ramp">0: đen trắng thuần. Trên 0: viền nét có khử răng cưa (<see cref="Shade"/>).</param>
+    public static GrayImage Nick(GrayImage src, int window, double k, double offset, double ramp)
+    {
+        var dst = new GrayImage(src.Width, src.Height);
+        var sink = new NickSink(src.Data, dst.Data, k, offset, ramp);
+        Scan(src, window, ref sink);
+        return dst;
+    }
+
     /// <summary>The local statistics Sauvola thresholds against, kept so that a new darkness or brightness costs one
     /// comparison per pixel (<see cref="Threshold(GrayImage, SauvolaStats, double, double, GrayImage)"/>) instead of
     /// another pass of window sums: what makes the darkness slider live on the result screen.
@@ -122,6 +156,25 @@ public static class Binarizer
             for (int i = y * w, end = i + w; i < end; i++)
             {
                 double t = (mean[i] + offset) * (1 + k * (dev[i] / SauvolaRange - 1)) - offset;
+                output[i] = Shade(data[i], t, ramp);
+            }
+        });
+    }
+
+    /// <summary>NICK với <paramref name="stats"/> (mean/deviation) đã tính sẵn -- cùng thống kê <see cref="Stats"/>
+    /// dùng cho Sauvola (NICK cũng chỉ cần mean + độ lệch chuẩn của cửa sổ), nên slider "đậm nhạt" ở màn xem
+    /// trước có thể đổi giữa Sauvola/NICK mà không phải quét lại ảnh từ đầu -- xem <c>LookPreview.Render</c>.</summary>
+    public static void NickThreshold(GrayImage src, SauvolaStats stats, double k, double offset, GrayImage dst, double ramp)
+    {
+        byte[] data = src.Data, output = dst.Data;
+        float[] mean = stats.Mean, dev = stats.Deviation;
+        int w = src.Width;
+        Parallel.For(0, src.Height, ParallelScope.Options, y =>
+        {
+            for (int i = y * w, end = i + w; i < end; i++)
+            {
+                double m = mean[i], d = dev[i];
+                double t = m + k * Math.Sqrt(d * d + m * m) - offset;
                 output[i] = Shade(data[i], t, ramp);
             }
         });
@@ -158,6 +211,22 @@ public static class Binarizer
         public void Put(int i, double mean, double variance)
         {
             double t = (mean + offset) * (1 + k * (Math.Sqrt(variance) / SauvolaRange - 1)) - offset;
+            output[i] = Shade(data[i], t, ramp);
+        }
+    }
+
+    /// <summary>Công thức NICK: t = m + k*sqrt(variance + m^2) - offset. Số hạng m^2 cộng thêm trong căn (so với
+    /// Niblack gốc chỉ có t = m + k*s) mới là phần khiến NICK không bị lỗi của Niblack trên nền phẳng: nếu không
+    /// có m^2, trên vùng đồng màu tuyệt đối (variance = 0) ngưỡng sẽ đúng bằng m -- bằng chính giá trị nền -- nên
+    /// "<=" biến cả nền thành mực (đã bắt được lỗi này qua unit test, số liệu công thức ban đầu lấy nhầm từ một
+    /// cách diễn giải rút gọn/thiếu của công thức gốc). Có m^2, ngưỡng trên nền phẳng xấp xỉ m*(1+k) -- vẫn thấp
+    /// hơn m một khoảng rõ rệt (k âm) nên nền luôn trắng đúng. Đối chiếu lại với mã nguồn thật của thư viện Doxa
+    /// (<c>Nick.hpp</c>), không phải suy từ công thức rút gọn trong tài liệu tổng hợp.</summary>
+    private readonly struct NickSink(byte[] data, byte[] output, double k, double offset, double ramp) : IWindowSink
+    {
+        public void Put(int i, double mean, double variance)
+        {
+            double t = mean + k * Math.Sqrt(variance + mean * mean) - offset;
             output[i] = Shade(data[i], t, ramp);
         }
     }
