@@ -16,19 +16,24 @@ public static class MauiProgram
 		// Stage timings to logcat (adb logcat -s DocScanPerf): cheap, and the only way to see real speeds on a phone.
 		Perf.Sink = line => Android.Util.Log.Info("DocScanPerf", line);
 		Perf.Log("startup: CreateMauiApp");
-		Perf.Log($"ads: {(AdsConfig.UseTestAds ? "TEST" : "REAL")} ad units, {AdsConfig.TestDeviceIds.Length} test device(s)");
+		Perf.Log($"ads: LevelPlay app {LevelPlayConfig.AppKey}, test mode {LevelPlayConfig.TestMode}");
 
 		var builder = MauiApp.CreateBuilder();
+
+		// driver test id 63cbec62-1e9f-4b74-936b-7649210507d9
 		builder
 			.UseMauiApp<App>()
-			// Ad provider: AdMob for now (known-good; AppLovin's binding is written in DocScanner.AdsService but
-			// not yet build-verified end to end -- see CLAUDE.md). Switching providers later is only changing
-			// which options record is constructed here, nothing else in the app.
-			.UseAdsService(new AdMobOptions(
-				BannerAdUnitId: AdsConfig.BannerId,
-				InterstitialAdUnitId: AdsConfig.InterstitialId,
-				UseTestAds: AdsConfig.UseTestAds,
-				TestDeviceIds: AdsConfig.TestDeviceIds))
+			// Ad provider: Unity LevelPlay (switched 2026-10-08 -- AdMob account closed by Google, appeal
+			// pending; AppLovin not accepting new publishers). AdMobOptions/AppLovinOptions are both still fully
+			// written and build-verified in DocScanner.AdsService (see CLAUDE.md) if either becomes usable again
+			// later -- switching back is only changing which options record is constructed here.
+			// Test device for this provider is registered on the LevelPlay dashboard itself (Settings > Testing
+			// > this app's GAID), not anything read from code.
+			.UseAdsService(new LevelPlayOptions(
+				AppKey: LevelPlayConfig.AppKey,
+				BannerAdUnitId: LevelPlayConfig.BannerAdUnitId,
+				InterstitialAdUnitId: LevelPlayConfig.InterstitialAdUnitId,
+				TestMode: LevelPlayConfig.TestMode))
 			.ConfigureFonts(fonts =>
 			{
 				fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");

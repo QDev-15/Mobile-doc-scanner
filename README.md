@@ -35,9 +35,10 @@ Build Release/AAB để upload Play Console: xem [DocScanner/Build_aab.md](DocSc
   `DocScanner.Core.Tests` 196/196 PASS + `DocScanner.Shared.Tests` 135/135 PASS (= 331 test tổng, đăng ký trong
   `DocScanner.slnx` ở gốc repo -- owner đã chuyển file này ra khỏi `DocScanner/` giữa các đợt).
 - **Quảng cáo đã tách sang `DocScanner.AdsService`** (dùng lại được ở project khác), hỗ trợ **AdMob + AppLovin +
-  Unity LevelPlay**, chọn bằng 1 dòng trong `MauiProgram.cs`. Nhà quảng cáo đang BẬT trong code vẫn là AdMob; cả
-  AppLovin lẫn LevelPlay đã viết xong + build xác nhận nhưng chưa chuyển sang vì còn thiếu tài khoản/khoá thật
-  (AppLovin hiện từ chối nhận publisher mới; LevelPlay vẫn mở đăng ký). Chi tiết: CLAUDE.md đợt 2026-10-07/08.
+  Unity LevelPlay**, chọn bằng 1 dòng trong `MauiProgram.cs`. **Nhà quảng cáo đang BẬT: Unity LevelPlay** (AdMob
+  bị Google đóng tài khoản, AppLovin hiện từ chối nhận publisher mới) -- mã thật đã điền trong
+  `DocScanner/LevelPlayConfig.cs`, build xác nhận 0 lỗi, **chưa thử quảng cáo thật trên máy**. AdMob/AppLovin vẫn
+  sẵn sàng chuyển lại bất kỳ lúc nào. Chi tiết: CLAUDE.md đợt 2026-10-07/08.
 - **Mất**: `MOBILE-STATUS.md` (tổng hợp việc chưa kiểm chứng/còn lại) và `THIRD-PARTY-NOTICES.md` (danh sách license
   bên thứ ba) được nhắc nhiều lần trong các file `.md` khác nhưng không có trong repo, không khôi phục được.
 - Android Release build chưa được build lại/cài thử trên máy sau các sửa gần nhất -- cần owner tự build + thử trên

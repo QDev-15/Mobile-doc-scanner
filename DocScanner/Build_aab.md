@@ -1,4 +1,11 @@
 Build file .aab cho DocScanner
+
+⚠ Trước khi build, nếu đã lâu không build Release, hoặc vừa đổi cấu hình project/thêm dependency mới: xoá sạch
+`DocScanner/obj/Release` và `DocScanner/bin/Release` trước. Gặp đúng 1 lần (2026-10-08): cache `obj/Release` cũ khiến
+font icon (`MaterialIcons-Regular.ttf`) bị rơi mất khỏi bản Release dù source/csproj đều đúng và bản Debug vẫn bình
+thường — icon tự hiện chữ Hán (font dự phòng trùng mã Unicode). Xoá 2 thư mục trên rồi build lại là hết, không phải
+sửa code gì. Chi tiết: CLAUDE.md đợt 2026-10-08 ("Icon hiện chữ Hán trên bản Release").
+
 Lệnh (chạy ở thư mục gốc repo, PowerShell hoặc terminal):
 
 ```bash

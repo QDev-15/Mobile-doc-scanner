@@ -852,3 +852,44 @@ bằng `javap`, viết `IAdProvider` mới -- không phải viết lại gì.
   đang BẬT trong `MauiProgram.cs` vẫn là AdMob -- cả AppLovin lẫn LevelPlay đều sẵn sàng, chỉ chờ owner có tài khoản + mã thật của 1 trong 2 để
   chuyển (đổi đúng 1 dòng `new AdMobOptions(...)` thành `new LevelPlayOptions(...)` hoặc `new AppLovinOptions(...)`).
 - Chưa build/cài thử bản Release hay chạy trên máy thật đợt này -- chỉ xác nhận bằng build Debug + unit test, giống đợt AppLovin.
+
+### Chuyển nhà quảng cáo đang BẬT sang Unity LevelPlay (đợt 2026-10-08 tiếp, owner tự đăng ký + đưa mã thật)
+Owner tự đăng ký tài khoản LevelPlay, thêm app (dùng "Not live yet" cho "Store availability" vì app chưa lên Play, không cần URL), tạo 2 ad
+unit (Banner `dc8xtbcrecuhnlop`, Interstitial `0syfvxfg425xbspt`), lấy App Key `289043a3d`, đăng ký máy test (Settings > Testing, GAID máy Note
+10+). Phát hiện khi tra cứu lại: bước "chờ duyệt qua 2 email" nhắc ở đợt trước chỉ áp dụng cho mạng "ironSource Ads" cũ (đã ngừng từ 2026-04-15),
+bản thân LevelPlay **không có bước duyệt thủ công** -- ad unit "Active" ngay, owner không thấy email nào là đúng, không phải thiếu sót.
+
+- `DocScanner/LevelPlayConfig.cs` (mới): giữ App Key + 2 Ad Unit ID + `TestMode` (Debug mới bật, chỉ bật log debug của adapter, không có khái
+  niệm "test ad unit ID" riêng như AdMob -- test/thật phân biệt bằng máy có đăng ký trên dashboard LevelPlay hay không).
+- `MauiProgram.cs`: `UseAdsService(new LevelPlayOptions(...))` thay cho `AdMobOptions`. `AdsConfig.cs` (AdMob) giữ nguyên không xoá, sẵn sàng
+  chuyển lại chỉ bằng cách đổi lại dòng này nếu kháng cáo AdMob thành công sau này.
+- Kiểm tra trước khi đổi: `com.google.android.gms.permission.AD_ID` (cần cho GAID đọc đúng trên Android 13+, ảnh hưởng trực tiếp tới việc máy
+  test có được nhận diện đúng không) đã có sẵn trong manifest đã merge (`obj/.../android/AndroidManifest.xml`), tự kéo theo từ AAR của
+  AdMob/LevelPlay -- không cần tự thêm gì vào `AndroidManifest.xml`.
+- Build xác nhận: `DocScanner.csproj` (cả app) 0 lỗi, không warning mới từ các file vừa sửa. `DocScanner.Core.Tests` 196/196 PASS.
+- Chưa build/cài thử bản Release hay chạy quảng cáo thật trên máy đợt này -- owner cần tự build Release + mở app, xác nhận banner/interstitial
+  LevelPlay hiện đúng trên máy đã đăng ký test device trước khi yên tâm hoàn toàn.
+
+### Icon hiện chữ Hán trên bản Release: cache `obj/Release` cũ, không phải lỗi code (đợt 2026-10-08 tiếp)
+Owner build Release + cài lên máy thật, báo "toàn bộ menu và icon" hiện chữ Trung Quốc -- qua `adb` xác nhận: chữ tiếng
+Việt (OpenSans) vẫn đúng 100%, CHỈ riêng icon (font `MaterialIcons-Regular.ttf`, xem `Views/Icons.cs`) bị thay bằng
+font dự phòng hệ thống (trùng mã Unicode Private Use Area với một font CJK, nên Android vẽ ra chữ Hán).
+
+- Kiểm tra trực tiếp: tải `base.apk` + 4 split APK (`arm64_v8a`/`en`/`vi`/`xxhdpi`) từ máy thật về, `unzip -l` --
+  **không có file `.ttf` nào trong gói cài**, dù `Resources/Fonts/*.ttf` đủ 3 file đúng dung lượng trong source và
+  `MauiFont Include="Resources\Fonts\*"` khai đúng trong `.csproj`. Build Debug (`bin/Debug/.../*.apk`) thì CÓ đủ font
+  (`assets/MaterialIcons-Regular.ttf` 356 KB đúng size) -- chỉ Release bị thiếu.
+- Loại trừ từng khả năng bằng build thật (không đoán): `EnableLLVM=false` -- vẫn thiếu; `AndroidLinkTool=none` (tắt R8)
+  -- vẫn thiếu; `AndroidPackageFormat=apk` thay AAB -- vẫn thiếu. Cả 3 lần test đều dùng chung `obj/Release` (chỉ đổi
+  `OutputPath`/`bin`) nên cùng chung triệu chứng -- gợi ý đúng hướng: **xoá hẳn `obj/Release` + `bin/Release` rồi build
+  lại từ đầu** -- font xuất hiện đầy đủ ngay (xác nhận cả `.apk` lẫn `.aab`). Không phải LLVM, không phải R8, không
+  liên quan gì tới AppLovin/LevelPlay/`DocScanner.AdsService` mới thêm -- thuần là trạng thái incremental build cũ của
+  `obj/Release` không đồng bộ với source hiện tại (cùng một dạng sự cố cache đã gặp nhiều lần trong chính đợt làm
+  AppLovin/LevelPlay hôm qua, chỗ khác trong build pipeline).
+- **Bài học cho lần build Release/AAB sau**: nếu thấy hiện tượng lạ không giải thích được bằng thay đổi code vừa làm
+  (nhất là sau khi đổi cấu hình project, thêm dependency mới, hoặc đã lâu không build Release), **xoá `obj/Release` +
+  `bin/Release` trước khi build** là việc nên thử đầu tiên, rẻ hơn nhiều so với dò từng cấu hình. Đã thêm ghi chú vào
+  `DocScanner/Build_aab.md`.
+- **Owner cần làm**: bản đang cài trên máy (`versionCode=3`) là bản build TRƯỚC khi phát hiện lỗi này, vẫn còn lỗi --
+  cần `adb uninstall btk.docscanner` rồi cài lại bằng bản vừa build sạch (hoặc build mới theo đúng `Build_aab.md` đã
+  cập nhật) mới hết hiện tượng chữ Hán.
