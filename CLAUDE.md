@@ -983,3 +983,100 @@ unit ID -- nhưng ngay sau `isInitialized=false` có 1 dòng `W LevelPlaySDK: IN
   trạng thái cần thêm bước xác nhận khác trên dashboard. **Owner cần tự vào LevelPlay dashboard, mở từng ad unit
   (Banner `dc8xtbcrecuhnlop`, Interstitial `0syfvxfg425xbspt`), kiểm tra mục network/instance có "Unity Ads" đang bật
   không** -- đây là phần Claude không xem được (cần đăng nhập tài khoản owner).
+
+### Soi tiếp: nghi GAID (Advertising ID) máy không khớp ID đã đăng ký test device (đợt 2026-10-09)
+Owner tự vào dashboard kiểm tra: ad unit Banner/Interstitial đều "Active", đúng 1 network bidding (`ironSource`,
+✓ Interstitial + Banner) -- dashboard cấu hình đúng, không thiếu gì (xoá nốt nghi ngờ "thiếu network" của đợt
+2026-10-08). Vậy vấn đề không nằm ở dashboard mediation.
+
+Owner chụp màn Cài đặt máy > Quảng cáo, ID hiển thị `63cbec62-1e9f-4b74-936b-7649210507d9` -- KHÁC với GAID log app
+thực tế gửi lên lúc debug hôm 2026-10-08 (`a6cab2a4-50ff-40a1-acd7-10ca1ad1abe1`, đọc từ dòng log nội bộ SDK
+`P6 a - collecting data for events: {...advertisingId=...}`). Owner xác nhận đã đăng ký `63cbec62...` làm test
+device trên dashboard **từ sáng 2026-10-08**, tức là TRƯỚC cả lúc debug chiều cùng ngày -- vậy suốt lúc test, app
+đã gửi lên 1 GAID khác với GAID đã đăng ký, máy không hề được dashboard nhận là test device trong toàn bộ quá
+trình test trước đó. Nghi nhiều khả năng do Google Play Services cache GAID cũ trong bộ nhớ app/dịch vụ, không
+đồng bộ với giá trị hiện có trong Cài đặt hệ thống.
+
+- **Owner cần làm (thử theo thứ tự, dừng khi app báo đúng ID)**: xoá cache riêng app DocScanner (không xoá data) ->
+  xoá cache Dịch vụ Google Play -> khởi động lại máy -> gỡ cài + cài lại app DocScanner.
+- **Thêm vào code để tự kiểm tra, không phải đoán qua log nội bộ SDK nữa**: `DocScanner.AdsService.csproj` đổi khai
+  báo `com.google.android.gms:play-services-ads-identifier` từ raw `AndroidMavenLibrary Bind="false"` (chỉ đủ để
+  AppLovin tự resolve classpath, không gọi được từ C#) sang NuGet chính thức `Xamarin.GooglePlayServices.Ads.Identifier`
+  118.3.0.3 -- cùng pattern "ưu tiên NuGet chính thức" đã rút ra từ vụ `androidx.browser` của AppLovin. `MauiProgram.cs`
+  thêm 1 dòng gọi `Google.Ads.Identifier.AdvertisingIdClient.GetAdvertisingIdInfo(context)` trong `Task.Run` (bắt
+  buộc, API này chặn và ném lỗi nếu gọi trên main thread), log ra `Perf.Log` ngay cạnh dòng "ads: LevelPlay app...".
+- **Namespace/API thật, tra bằng cách đọc metadata DLL chứ không đoán** (đã đoán sai 1 lần: `Android.Gms.Ads.Identifier`
+  không tồn tại -- namespace thật của riêng NuGet này là `Google.Ads.Identifier`, khác hẳn namespace `Android.Gms.Ads.*`
+  mà Plugin.AdMob dùng dù cùng họ Java `com.google.android.gms.*`). Dựng 1 project console .NET 10 tạm dùng
+  `System.Reflection.Metadata` (có sẵn trong BCL, không cần cài gì) đọc thẳng bảng TypeDef của file .dll trong
+  NuGet cache để liệt kê đúng namespace/tên lớp/tên property -- `AdvertisingIdClient.GetAdvertisingIdInfo(Context)`
+  (static), trả về `AdvertisingIdClient.Info` với 2 property `Id` và `IsLimitAdTrackingEnabled` (đúng như đoán ban
+  đầu, chỉ namespace sai). Xoá project tạm sau khi dùng xong.
+- Build xác nhận: `DocScanner.AdsService` riêng 0 lỗi, `DocScanner.csproj` (cả app) 0 lỗi. Chưa build/cài lên máy
+  đợt này -- máy owner đang rút ra để tự làm các bước xoá cache ở trên.
+
+### Tìm ra nguyên nhân thật: race condition Init()/LoadAd(), đã fix và xác nhận quảng cáo hiện (đợt 2026-10-09 tiếp)
+Máy owner bị lỗi USB hỏng (Windows báo "device malfunctioned" dù đã đổi dây chuẩn, PnP status "Unknown"/
+`Present: False`) -- chuyển hẳn sang **gỡ lỗi không dây** (`adb pair`/`adb connect` qua WiFi, Settings > Developer
+options > Wireless debugging) để tiếp tục debug, không phụ thuộc USB/driver Windows nữa.
+
+Log lần này (trước đó mọi lần đều "im lặng" sau "Adding lifecycle event observer") lần đầu bắt được đúng callback
+thật:
+```
+CALLBACK: ... onAdLoadFailed ... errorCode:625, errorMessage:Load must be called after init success callback
+```
+-- **nguyên nhân thật sự duy nhất, không phải dashboard, không phải thiếu network, không phải GAID/test device**
+(nghi vấn GAID ở mục trên hoá ra không liên quan: `ironSource` chạy real-time bidding, không cần máy đã đăng ký
+test device mới trả được kết quả). `UnityLevelPlayProvider.Initialize()` gọi `LevelPlay.Init()` (bất đồng bộ, mất
+~1 giây trên máy thật) nhưng `CreateBannerView`/`PrepareInterstitial` gọi `LoadAd()` NGAY LẬP TỨC sau đó (banner
+view được tạo ngay khi trang đầu tiên hiện ra) -- `InitListener.OnInitSuccess` trước đó là thân rỗng, không hề có
+cơ chế gì để trì hoãn các lệnh tải cho tới khi init thật sự xong. SDK từ chối thẳng mọi `LoadAd()` gọi trước khi
+init xong, không tự xếp hàng hộ.
+
+- **Sửa**: `UnityLevelPlayProvider.cs` thêm hàng đợi (`_pendingLoads`, khoá bằng `System.Threading.Lock` kiểu mới
+  C# 13) -- `CreateBannerView`/`PrepareInterstitial` không gọi `LoadAd()` trực tiếp nữa mà qua `RunAfterInit(...)`:
+  nếu init đã xong thì chạy ngay, chưa xong thì xếp vào hàng đợi; `InitListener.OnInitSuccess`/`OnInitFailed` (cả 2
+  nhánh, không chỉ thành công -- init thất bại thật sự thì để `LoadAd()` tự báo lỗi đúng chỗ, không treo hàng đợi
+  mãi) gọi `OnInitFinished()` chạy hết các lệnh đang chờ.
+- Build xác nhận: `DocScanner.AdsService` riêng 0 lỗi, `DocScanner.csproj` (cả app) 0 lỗi. Cài lên máy thật (qua
+  WiFi debugging) và xác nhận TRỰC TIẾP qua log: `onInitSuccess()` -> `onBannerAdLoaded` (`adNetwork=ironsourceads,
+  instanceName=Bidding, country=VN`) -> `onAdLoaded` (interstitial) -> `onBannerAdDisplayed`. Chụp màn hình xác
+  nhận banner thật sự hiện trên máy ("Demo App", creative test của ironSource bidding). **Vụ quảng cáo LevelPlay
+  không hiện coi như đã xong, có bằng chứng trực tiếp trên máy, không còn là nghi vấn/giả thuyết.**
+- Bài học: khi SDK bên thứ 3 có API khởi tạo bất đồng bộ, không bao giờ giả định các lệnh gọi sau đó (tạo view,
+  tải quảng cáo...) sẽ tự đợi -- đặc biệt nguy hiểm vì lỗi loại này ẩn kỹ: build không báo lỗi gì, mọi lệnh gọi API
+  đều đúng chữ ký, log vẫn chạy bình thường tới gần cuối, chỉ có đúng 1 dòng CALLBACK lỗi (dễ bị lẫn vào hàng trăm
+  dòng log nội bộ khác của SDK) là manh mối thật. Tốn nhiều vòng chẩn đoán sai hướng (XA4242/thiếu adapter, dashboard
+  network, GAID/test device) trước khi bắt đúng dòng log này -- đều là nỗ lực hợp lý tại thời điểm đó (mỗi nghi vấn
+  đều có bằng chứng ủng hộ), không lãng phí hoàn toàn: lỗi thiếu adapter Unity Ads là có thật và cũng cần sửa, chỉ
+  là không đủ để giải thích hết triệu chứng.
+
+### Banner LevelPlay không full width, rồi crash khi sửa nhanh (đợt 2026-10-09 tiếp)
+Owner báo banner hiện ra nhưng không rộng hết màn hình (log xác nhận `adSize: BANNER 320x50` -- cỡ cố định, vì
+`LevelPlayBannerAdView(context, adUnitId)` constructor 2 tham số không nhận cấu hình gì, mặc định cỡ chuẩn, không
+giống `AdMobProvider.CreateBannerView` đã có sẵn cỡ "adaptive" theo chiều rộng màn hình).
+
+- **Sửa lần 1, gây crash ngay**: thêm `LevelPlayBannerAdView.Config` với `SetAdSize(LevelPlayAdSize.
+  CreateAdaptiveAdSize(context)!)`, gọi ngay trong `CreateBannerView`. Crash thật trên máy, log bắt được dòng:
+  `LevelPlaySDK: API: g1 a - BANNER - The SDK must be successfully initialized to create an Adaptive Ad Size` --
+  `CreateAdaptiveAdSize` có đúng ràng buộc giống `LoadAd()` (phải đợi init xong), nhưng khi chưa đủ điều kiện nó
+  trả về `null` thay vì tự xếp hàng, và dấu `!` (null-forgiving) trong C# chỉ tắt cảnh báo lúc build chứ không
+  ngăn được crash thật -- `SetAdSize(null)` ném `NullPointerException` bên phía Java. **Bài học: dấu `!` không
+  phải "đảm bảo không null", chỉ là "tắt cảnh báo compiler" -- không thay thế được cho việc xử lý đúng ràng buộc
+  thời điểm gọi của SDK.**
+- **Sửa đúng**: không thể dùng lại `RunAfterInit` kiểu cũ (chỉ hoãn mỗi `LoadAd()`) vì `CreateBannerView` bắt buộc
+  phải trả về `View` ngay lập tức (gọi đồng bộ từ `AdBannerSurfaceHandler.CreatePlatformView`), còn
+  `LevelPlayBannerAdView` lại không có cách đổi `AdSize` sau khi đã tạo. Giải pháp: `CreateBannerView` trả về
+  một `FrameLayout` RỖNG ngay (ổn định, tái dùng giữa các trang y hệt cơ chế reparent cũ), còn `LevelPlayBannerAdView`
+  thật (với `Config` adaptive) chỉ được tạo và `AddView` vào container đó bên trong `RunAfterInit`, tức là đợi
+  đúng tới khi init xong mới tạo. Không cần sửa gì ở `AdBannerSurfaceHandler`/`AdBannerSurface` (cả 2 app): cách
+  `Handler` của DocScanner lẫn PdfReader bọc banner đều set `WrapContent` + `AddView`, tự layout lại đúng khi view
+  con (banner thật) được thêm vào sau một nhịp -- không phải đoán, đã xác nhận bằng ảnh chụp màn hình thật.
+- `OnInitFinished` (đổi tên từ "load-only" thành dùng chung cho mọi hành động hoãn, kể cả tạo View) bọc thêm
+  `MainThread.BeginInvokeOnMainThread` vì giờ có thao tác động tới View (`container.AddView`) -- phòng trường hợp
+  callback init tới từ thread khác (log quan sát được tới giờ luôn là main thread, nhưng không có gì đảm bảo mãi
+  vậy).
+- Build xác nhận cả 2 app (`DocScanner.AdsService`, `AdsService` bên PdfReader) 0 lỗi. Cài lên máy thật DocScanner
+  (qua WiFi debugging), xác nhận bằng cả log (`adSize: CUSTOM 411x50`, đúng chiều rộng màn hình Note10+) lẫn ảnh
+  chụp màn hình (banner liền mép trái-phải, không còn khoảng trống). PdfReader mới build thư viện riêng, owner tự
+  build/cài app để xác nhận nốt (chưa cài thử app đầy đủ đợt này).

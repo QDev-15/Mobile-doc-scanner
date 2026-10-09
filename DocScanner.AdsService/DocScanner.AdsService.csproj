@@ -33,7 +33,6 @@
          would risk clashing with the Xamarin.AndroidX.* / Xamarin.GooglePlayServices.* bindings already pulled
          in elsewhere in the app (CameraX, Plugin.AdMob, Play In-App Update). -->
     <AndroidMavenLibrary Include="com.applovin:applovin-sdk" Version="13.6.4" />
-    <AndroidMavenLibrary Include="com.google.android.gms:play-services-ads-identifier" Version="17.1.0" Repository="Google" Bind="false" />
     <AndroidMavenLibrary Include="com.google.android.gms:play-services-appset" Version="16.0.0" Repository="Google" Bind="false" />
     <!-- androidx.browser:browser is NOT declared as a raw AndroidMavenLibrary here (unlike the two above): doing
          so built fine in isolation but broke the full app with a D8/R8 duplicate-class error once combined with
@@ -84,6 +83,13 @@
     <PackageReference Include="Xamarin.AndroidX.Concurrent.Futures" Version="1.3.0.4" />
     <PackageReference Include="Xamarin.AndroidX.Interpolator" Version="1.0.0.37" />
     <PackageReference Include="Xamarin.AndroidX.Browser" Version="1.10.0.1" />
+    <!-- Official binding for com.google.android.gms:play-services-ads-identifier (was a raw Bind="false" Maven
+         declaration above, only there to satisfy AppLovin's classpath): switched to this NuGet (đợt 2026-10-09)
+         so the app itself can call AdvertisingIdClient.GetAdvertisingIdInfo() to log the real GAID at startup:
+         cần để chẩn đoán vụ LevelPlay không nhận máy test (xem CLAUDE.md), không phải lúc nào cũng tin được giá
+         trị trong Cài đặt máy do Play Services có cache riêng. Cùng pattern "ưu tiên NuGet chính thức thay vì tự
+         bind thô" đã rút ra từ vụ androidx.browser của AppLovin. -->
+    <PackageReference Include="Xamarin.GooglePlayServices.Ads.Identifier" Version="118.3.0.3" />
     <!-- For Unity LevelPlay's kotlin-stdlib dependency (XA4242); 2.4.0.1 because Xamarin.AndroidX.Core 1.19.0.1
          (above) already requires at least that version transitively (NU1605 named the exact floor). -->
     <PackageReference Include="Xamarin.Kotlin.StdLib" Version="2.4.0.1" />
