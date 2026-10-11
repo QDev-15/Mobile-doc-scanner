@@ -58,7 +58,7 @@ public sealed class AdsService : IAdsService
         _ads.PrepareInterstitial(); // one kept ready at all times, so the 5th export rarely has to skip
     }
 
-    public bool ShowAds => !_license.State.IsPro;
+    public bool ShowAds => _ads.IsAdsEnabled && !_license.State.IsPro;
 
     public bool IsBannerLoaded => _ads.IsBannerLoaded;
 

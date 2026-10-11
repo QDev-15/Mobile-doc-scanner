@@ -34,7 +34,7 @@
 		     builds up to 1.3/4 were device/local-AAB testing only, never actually uploaded to Play. versionCode 1
 		     was consumed by the Internal testing upload, so Play rejects it on any other track/release ("Version
 		     code 1 has already been used"): bumped to 2, versionName stays 1.0 (still the first public version). -->
-		<ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+		<ApplicationDisplayVersion>1.1</ApplicationDisplayVersion>
 		<ApplicationVersion>3</ApplicationVersion>
 
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">26.0</SupportedOSPlatformVersion>
@@ -64,10 +64,15 @@
 		<EnableLLVM>true</EnableLLVM>
 	</PropertyGroup>
 
-	<!-- Tester build: `dotnet publish ... -p:TestAds=true` forces Google's test ad units (AdsConfig.UseTestAds) even in Release.
-	     Never pass it for the public/production build. -->
-	<PropertyGroup Condition="'$(TestAds)' == 'true'">
-		<DefineConstants>$(DefineConstants);TEST_ADS</DefineConstants>
+	<!-- Ads MASTER switch (AdsProviderOptions.IsAdsEnabled in DocScanner.AdsService; same property, same meaning as in
+	     PdfReader). Default true = ads on in EVERY build type (Debug, Release, APK, AAB). To build with ads fully off
+	     (the ad SDK is not even initialised, nothing loads), either pass -p:AdsEnabled=false:
+	       dotnet publish DocScanner.csproj -f net10.0-android -c Release -p:AndroidPackageFormat=aab -p:AdsEnabled=false
+	     or change the default on the next line. Test/demo ads are served by the ad network itself to registered test
+	     devices, so nothing here concerns them. -->
+	<PropertyGroup>
+		<AdsEnabled Condition="'$(AdsEnabled)' == ''">true</AdsEnabled>
+		<DefineConstants Condition="'$(AdsEnabled)' == 'false'">$(DefineConstants);ADS_DISABLED</DefineConstants>
 	</PropertyGroup>
 
 	<!-- Release signing (Google Play upload key): keystore + passwords are NOT in this file (this file is

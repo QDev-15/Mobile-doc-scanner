@@ -48,7 +48,11 @@ public static class MauiProgram
 				AppKey: LevelPlayConfig.AppKey,
 				BannerAdUnitId: LevelPlayConfig.BannerAdUnitId,
 				InterstitialAdUnitId: LevelPlayConfig.InterstitialAdUnitId,
-				TestMode: LevelPlayConfig.TestMode))
+				TestMode: LevelPlayConfig.TestMode)
+			{
+				// MASTER ads switch for this build (DocScanner.csproj's AdsEnabled MSBuild property, default true).
+				IsAdsEnabled = LevelPlayConfig.IsAdsEnabled,
+			})
 			.ConfigureFonts(fonts =>
 			{
 				fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
@@ -80,6 +84,7 @@ public static class MauiProgram
 		builder.Services.AddSingleton<PdfExportService>();
 		builder.Services.AddSingleton(_ => new ExportLibrary(Path.Combine(FileSystem.AppDataDirectory, "exports")));
 		builder.Services.AddSingleton<ExportCoordinator>();
+		builder.Services.AddSingleton<ProUpgrade>();
 		builder.Services.AddSingleton<IDownloadsService, AndroidDownloadsService>();
 		builder.Services.AddSingleton<ILicenseService, LicenseService>();
 		// Fully qualified: the "DocScanner.AdsService" namespace (the ads library) and this app's own
@@ -113,6 +118,10 @@ public static class MauiProgram
 #endif
 
 		MauiApp app = builder.Build();
+		// Resolve the ads service NOW (before any page exists): its constructor applies the cached Pro flag to the ads
+		// library, which creates the ad SDK lazily. A Pro user therefore never initialises the SDK, builds a banner or
+		// loads anything; resolved lazily instead, a banner page could win the race and start ads for a Pro user.
+		_ = app.Services.GetRequiredService<IAdsService>();
 		Perf.Log("startup: MauiApp built");
 		return app;
 	}

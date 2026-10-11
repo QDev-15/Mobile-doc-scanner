@@ -14,6 +14,14 @@ public static class LevelPlayConfig
     public const string BannerAdUnitId = "dc8xtbcrecuhnlop";
     public const string InterstitialAdUnitId = "0syfvxfg425xbspt";
 
+    /// <summary>Ads master switch for this build, fed to <c>LevelPlayOptions.IsAdsEnabled</c>. True unless the build was
+    /// made with <c>-p:AdsEnabled=false</c> (DocScanner.csproj defines ADS_DISABLED). Applies to every configuration.</summary>
+#if ADS_DISABLED
+    public const bool IsAdsEnabled = false;
+#else
+    public const bool IsAdsEnabled = true;
+#endif
+
     /// <summary>Turns on LevelPlay's own adapter debug logging (<c>LevelPlay.SetAdaptersDebug</c>). Debug builds
     /// only, same split as <see cref="AdsConfig.UseTestAds"/> -- does not affect which ad unit IDs are used,
     /// only how chatty the SDK's own logcat output is.</summary>

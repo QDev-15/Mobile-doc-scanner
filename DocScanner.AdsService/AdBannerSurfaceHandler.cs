@@ -22,9 +22,10 @@ internal sealed class AdBannerSurfaceHandler : ViewHandler<AdBannerSurface, View
 
     protected override View CreatePlatformView()
     {
-        IAdProvider provider = IPlatformApplication.Current?.Services.GetService<IAdProvider>()
+        AdsClient client = IPlatformApplication.Current?.Services.GetService<AdsClient>()
             ?? throw new InvalidOperationException("DocScanner.AdsService: MauiAppBuilder.UseAdsService(...) was never called.");
-        return provider.CreateBannerView(Context);
+        // null while ads are not allowed (Pro user / master switch off): an empty Gone view, the ad SDK never touched.
+        return client.GetBannerView(Context) ?? new View(Context) { Visibility = Android.Views.ViewStates.Gone };
     }
 
     /// <summary>Never tears down the shared native view just because the page hosting it right now is going

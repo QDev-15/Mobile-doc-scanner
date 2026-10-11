@@ -39,9 +39,7 @@ public static class AdsConfig
     public static bool HasRealIds => !RealBannerAdUnitId.Contains("REPLACE_ME") && !RealInterstitialAdUnitId.Contains("REPLACE_ME");
 
     /// <summary>True when this build must show Google's test ads. Debug: always. Release: only while the real IDs are missing.</summary>
-#if DEBUG || TEST_ADS
-    // TEST_ADS: a Release/AAB for testers, built with `-p:TestAds=true` (see DocScanner.csproj) -- optimised and signed like
-    // the real release, but every ad unit is Google's test one, so testers can tap ads freely.
+#if DEBUG
     public static bool UseTestAds => true;
 #else
     public static bool UseTestAds => !HasRealIds;

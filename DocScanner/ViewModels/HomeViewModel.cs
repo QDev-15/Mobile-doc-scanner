@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DocScanner.Core;
+using DocScanner.Core.Licensing;
 using DocScanner.Services;
 
 namespace DocScanner.ViewModels;
@@ -13,7 +14,7 @@ namespace DocScanner.ViewModels;
 /// press also drags the selection onto a folder. Moving never reorders anything: documents are listed by creation time.
 /// </summary>
 public partial class HomeViewModel(DocumentStore store, ImportCoordinator importer, BackgroundImporter imports, PageIngestQueue queue,
-	ExportCoordinator exports)
+	ExportCoordinator exports, ILicenseService license, ProUpgrade proUpgrade)
 	: ObservableObject, IQueryAttributable
 {
 	private static bool _resumed;
@@ -55,14 +56,25 @@ public partial class HomeViewModel(DocumentStore store, ImportCoordinator import
 	}
 
 	/// <summary>Follow the background pipeline while this screen is visible.</summary>
+	/// <summary>False once Pro is owned: the crown (buy Pro / remove ads) button on this screen is then hidden.</summary>
+	public bool IsFree => !license.State.IsPro;
+
+	private void OnLicenseChanged() => MainThread.BeginInvokeOnMainThread(() => OnPropertyChanged(nameof(IsFree)));
+
+	[RelayCommand]
+	private Task OpenProAsync() => proUpgrade.ShowAsync();
+
 	public void Attach()
 	{
+		license.Changed += OnLicenseChanged;
+		OnPropertyChanged(nameof(IsFree));
 		queue.PageUpdated += OnPageUpdated;
 		imports.Changed += OnImportChanged;
 	}
 
 	public void Detach()
 	{
+		license.Changed -= OnLicenseChanged;
 		queue.PageUpdated -= OnPageUpdated;
 		imports.Changed -= OnImportChanged;
 	}

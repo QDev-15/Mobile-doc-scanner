@@ -90,9 +90,31 @@ internal sealed class UnityLevelPlayProvider(LevelPlayOptions options) : IAdProv
             {
                 Gravity = GravityFlags.CenterHorizontal,
             });
-            view.LoadAd();
+            if (!_suspended) view.LoadAd();
         });
         return container;
+    }
+
+    /// <summary>Pro bought mid-session: stop the banner refreshing and retrying, hide it; resume on false. (A Pro user at
+    /// startup never reaches here: the provider is never even created for them, see AdsClient.)</summary>
+    public void SetSuspended(bool suspended)
+    {
+        _suspended = suspended;
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (_container is { } container) container.Visibility = suspended ? Android.Views.ViewStates.Gone : Android.Views.ViewStates.Visible;
+            if (_shared is not { } view) return;
+            if (suspended)
+            {
+                view.PauseAutoRefresh();
+                SetBannerLoaded(false);
+            }
+            else
+            {
+                view.ResumeAutoRefresh();
+                view.LoadAd();
+            }
+        });
     }
 
     public void PrepareInterstitial()
@@ -141,6 +163,43 @@ internal sealed class UnityLevelPlayProvider(LevelPlayOptions options) : IAdProv
         return ad;
     }
 
+    /// <summary>Always-on (Release too) one-line ad diagnostics: the SDK itself is silent in Release, so without this a
+    /// missing banner can not be told apart from a failed load. Read with `adb logcat -s DocScanAds`.</summary>
+    internal static void AdLog(string message) => Android.Util.Log.Info("DocScanAds", message);
+
+    // LevelPlay auto-refreshes a loaded banner (~every 15s), but after a failed load (e.g. 509 "Mediation No fill", seen
+    // on-device 2026-10-11 after ~10 refreshes) it stops on its own -- observed: no further callback for 5+ minutes, so the
+    // banner (hidden on failure) never came back. Retry with backoff: 20s, 40s, ... capped at 5 min; reset on success.
+    private bool _suspended; // set by SetSuspended: the app turned ads off mid-session (e.g. a Pro purchase)
+    private int _bannerRetries;
+    private int _bannerFailures;
+
+    // One failed refresh while an ad is already on screen keeps that ad (a transient no-fill should not blank a banner
+    // that is still perfectly displayable); a second consecutive failure, or a failure with nothing ever loaded, hides it.
+    private void OnBannerLoadFailed()
+    {
+        int failures = Interlocked.Increment(ref _bannerFailures);
+        if (!IsBannerLoaded || failures >= 2) SetBannerLoaded(false);
+    }
+    private bool _bannerRetryPending;
+
+    private void ScheduleBannerRetry()
+    {
+        lock (_lock)
+        {
+            if (_bannerRetryPending) return;
+            _bannerRetryPending = true;
+        }
+        int attempt = Interlocked.Increment(ref _bannerRetries);
+        TimeSpan delay = TimeSpan.FromSeconds(Math.Min(300, 20 * Math.Pow(2, attempt - 1)));
+        AdLog($"banner retry #{attempt} in {delay.TotalSeconds:0}s");
+        _ = Task.Delay(delay).ContinueWith(_ => MainThread.BeginInvokeOnMainThread(() =>
+        {
+            lock (_lock) _bannerRetryPending = false;
+            if (!_suspended) _shared?.LoadAd();
+        }));
+    }
+
     private void SetBannerLoaded(bool loaded)
     {
         if (IsBannerLoaded == loaded) return;
@@ -152,14 +211,14 @@ internal sealed class UnityLevelPlayProvider(LevelPlayOptions options) : IAdProv
     {
         // Either outcome unblocks queued LoadAd() calls: a genuine init failure should surface as a normal
         // ad-load failure through the banner/interstitial listeners, not as a silent, permanently-stuck queue.
-        public void OnInitSuccess(LevelPlayConfiguration? configuration) => owner.OnInitFinished();
-        public void OnInitFailed(LevelPlayInitError? error) => owner.OnInitFinished();
+        public void OnInitSuccess(LevelPlayConfiguration? configuration) { AdLog("init success"); owner.OnInitFinished(); }
+        public void OnInitFailed(LevelPlayInitError? error) { AdLog($"init FAILED: {error}"); owner.OnInitFinished(); }
     }
 
     private sealed class BannerListener(UnityLevelPlayProvider owner) : Java.Lang.Object, ILevelPlayBannerAdViewListener
     {
-        public void OnAdLoaded(LevelPlayAdInfo? adInfo) => owner.SetBannerLoaded(true);
-        public void OnAdLoadFailed(LevelPlayAdError? error) => owner.SetBannerLoaded(false);
+        public void OnAdLoaded(LevelPlayAdInfo? adInfo) { AdLog($"banner loaded: {adInfo}"); Interlocked.Exchange(ref owner._bannerRetries, 0); Interlocked.Exchange(ref owner._bannerFailures, 0); owner.SetBannerLoaded(true); }
+        public void OnAdLoadFailed(LevelPlayAdError? error) { AdLog($"banner load FAILED: {error}"); owner.OnBannerLoadFailed(); owner.ScheduleBannerRetry(); }
         public void OnAdDisplayed(LevelPlayAdInfo? adInfo) { }
         public void OnAdDisplayFailed(LevelPlayAdInfo? adInfo, LevelPlayAdError? error) { }
         public void OnAdClicked(LevelPlayAdInfo? adInfo) { }
@@ -170,8 +229,8 @@ internal sealed class UnityLevelPlayProvider(LevelPlayOptions options) : IAdProv
 
     private sealed class InterstitialListener : Java.Lang.Object, ILevelPlayInterstitialAdListener
     {
-        public void OnAdLoaded(LevelPlayAdInfo? adInfo) { }
-        public void OnAdLoadFailed(LevelPlayAdError? error) { }
+        public void OnAdLoaded(LevelPlayAdInfo? adInfo) => AdLog($"interstitial loaded: {adInfo}");
+        public void OnAdLoadFailed(LevelPlayAdError? error) => AdLog($"interstitial load FAILED: {error}");
         public void OnAdDisplayed(LevelPlayAdInfo? adInfo) { }
         public void OnAdDisplayFailed(LevelPlayAdError? error, LevelPlayAdInfo? adInfo) { }
         public void OnAdClicked(LevelPlayAdInfo? adInfo) { }

@@ -147,6 +147,17 @@
             <Label Grid.Column="1" Text="{Binding Title}" FontSize="21" FontFamily="OpenSansSemibold" VerticalOptions="Center"
                    LineBreakMode="TailTruncation" TextColor="{AppThemeBinding Light={StaticResource OnSurface}, Dark={StaticResource OnSurfaceDark}}" />
             <HorizontalStackLayout Grid.Column="2" Spacing="6">
+                <!-- Gold crown: buy Pro / remove ads. Only while the user is still on the free tier. -->
+                <Border IsVisible="{Binding IsFree}" WidthRequest="34" HeightRequest="34" StrokeThickness="0" BackgroundColor="{AppThemeBinding Light={StaticResource CardBackground}, Dark={StaticResource CardBackgroundDark}}">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="999" />
+                    </Border.StrokeShape>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding OpenProCommand}" />
+                    </Border.GestureRecognizers>
+                    <Image Source="crown.svg" WidthRequest="20" HeightRequest="20" HorizontalOptions="Center" VerticalOptions="Center"
+                           SemanticProperties.Description="Nâng cấp Pro, bỏ quảng cáo" />
+                </Border>
                 <Border WidthRequest="34" HeightRequest="34" StrokeThickness="0" BackgroundColor="{AppThemeBinding Light={StaticResource CardBackground}, Dark={StaticResource CardBackgroundDark}}">
                     <Border.StrokeShape>
                         <RoundRectangle CornerRadius="999" />
