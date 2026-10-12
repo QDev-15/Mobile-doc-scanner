@@ -1,25 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 	<application android:allowBackup="false" android:largeHeap="true" android:icon="@mipmap/appicon" android:roundIcon="@mipmap/appicon_round" android:supportsRtl="true"
-	             android:networkSecurityConfig="@xml/network_security_config">
-
-		<!-- AdMob (Services/AdsService.cs). ${admobAppId} comes from DocScanner.csproj's
-		     AndroidManifestPlaceholders; see the TODO there before a Play release build. -->
-		<meta-data android:name="com.google.android.gms.ads.APPLICATION_ID"
-		           android:value="${admobAppId}" />
-		<activity android:name="com.google.android.gms.ads.AdActivity"
-		          android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|uiMode|screenSize|smallestScreenSize"
-		          android:theme="@android:style/Theme.Translucent" android:exported="false" />
-	</application>
+	             android:networkSecurityConfig="@xml/network_security_config" />
 
 	<!-- Camera capture. Gallery import goes through the system photo picker, which needs no storage permission. -->
 	<uses-permission android:name="android.permission.CAMERA" />
 
-	<!-- Google Play Billing (bản Pro), AdMob (quảng cáo bản miễn phí), and Play In-App Update (bắt buộc cập
-	     nhật lên bản mới nhất, Services/AndroidAppUpdate.cs): pages and photos themselves never leave the
+	<!-- Google Play Billing (bản Pro), Unity LevelPlay (quảng cáo bản miễn phí), and Play In-App Update (bắt buộc
+	     cập nhật lên bản mới nhất, Services/AndroidAppUpdate.cs): pages and photos themselves never leave the
 	     phone. The update check/download itself is entirely Play's own backend, not a server of ours. -->
 	<uses-permission android:name="android.permission.INTERNET" />
 	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+	<!-- Required since Android 13 (API 33): without it the system zeroes out the Advertising ID for every
+	     app on the device. Previously came along for free via Plugin.AdMob's own transitively-bundled
+	     play-services-ads-identifier; removed along with AdMob itself (2026-10-12, dropping the app's direct
+	     Plugin.AdMob reference once its only caller, SettingsViewModel.cs's "Privacy options" row, was deleted),
+	     so it must be declared explicitly now. Still needed regardless: MauiProgram.cs reads the real GAID
+	     directly (Google.Ads.Identifier.AdvertisingIdClient, now supplied by DocScanner.AdsService.LevelPlay's
+	     own Xamarin.GooglePlayServices.Ads.Identifier reference) for LevelPlay test-device diagnosis. -->
+	<uses-permission android:name="com.google.android.gms.permission.AD_ID" />
 	<uses-feature android:name="android.hardware.camera" android:required="false" />
 	<uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 

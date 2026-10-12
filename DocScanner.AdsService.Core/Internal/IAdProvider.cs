@@ -2,12 +2,18 @@ using View = Android.Views.View;
 
 namespace DocScanner.AdsService.Internal;
 
-/// <summary>What each ad network's wrapper (<c>AdMobProvider</c>, <c>AppLovinProvider</c>, <c>UnityLevelPlayProvider</c>)
-/// must implement. <c>AdsClient</c> is the single <see cref="IAdsClient"/> exposed to the app; it creates the matching
-/// provider LAZILY (only once ads are actually allowed -- a Pro user's process never constructs one, so the ad SDK is
-/// never initialised and nothing is ever loaded) and forwards to it. Internal: consumers of this library only ever see
-/// <see cref="IAdsClient"/>.</summary>
-internal interface IAdProvider
+/// <summary>What each ad network's wrapper (<c>AdMobProvider</c> in DocScanner.AdsService.AdMob,
+/// <c>AppLovinProvider</c> in DocScanner.AdsService.AppLovin, <c>UnityLevelPlayProvider</c> in
+/// DocScanner.AdsService.LevelPlay) must implement. <c>AdsClient</c> is the single <see cref="IAdsClient"/>
+/// exposed to the app; it creates the matching provider LAZILY (only once ads are actually allowed -- a Pro
+/// user's process never constructs one, so the ad SDK is never initialised and nothing is ever loaded) and
+/// forwards to it. Internal: consumers of this library only ever see <see cref="IAdsClient"/>.
+///
+/// Public (not internal, despite living under the Internal/ namespace convention): a provider project
+/// (DocScanner.AdsService.AdMob / .AppLovin / .LevelPlay) implements this from a SEPARATE assembly (2026-10-12
+/// split, replacing the single DocScanner.AdsService project + its AdProviderKind switch -- see
+/// DocScanner.AdsService.Core.csproj's comment), which a C# interface must be at least public to allow.</summary>
+public interface IAdProvider
 {
     /// <summary>True once the banner has a creative on screen; drives <see cref="IAdsClient.IsBannerLoaded"/>.</summary>
     bool IsBannerLoaded { get; }

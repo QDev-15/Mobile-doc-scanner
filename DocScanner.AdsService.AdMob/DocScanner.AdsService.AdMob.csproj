@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- AdMob ad provider: one project per network (2026-10-12 split of the former single DocScanner.AdsService
+       project). Not referenced by DocScanner today (LevelPlay is the active provider, see
+       DocScanner.AdsService.LevelPlay; AdMob's own Play Console account was closed by Google); kept
+       available so switching back to AdMob later is "reference this project instead, call UseAdMobAds instead
+       of UseLevelPlayAds" and nothing else. See DocScanner.AdsService.Core.csproj's comment for the full
+       reasoning. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>DocScanner.AdsService</RootNamespace>
+    <SupportedOSPlatformVersion>26.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DocScanner.AdsService.Core\DocScanner.AdsService.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Plugin.AdMob (MIT) also brings Xamarin.GooglePlayServices.Ads.Lite, which is where Android.Gms.Ads.*
+         (AdView, AdRequest, MobileAds...) comes from; see Internal/AdMobProvider.cs. Pulls in the Google
+         Mobile Ads SDK itself (proprietary, Google's own terms). -->
+    <PackageReference Include="Plugin.AdMob" Version="10.0.90" />
+  </ItemGroup>
+
+</Project>

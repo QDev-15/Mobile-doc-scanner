@@ -5,7 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:vm="clr-namespace:DocScanner.ViewModels"
     xmlns:views="clr-namespace:DocScanner.Views"
-    xmlns:ads="clr-namespace:DocScanner.AdsService;assembly=DocScanner.AdsService"
+    xmlns:ads="clr-namespace:DocScanner.AdsService;assembly=DocScanner.AdsService.Core"
     x:DataType="vm:ViewerViewModel"
     Title="{Binding Title}"
    >

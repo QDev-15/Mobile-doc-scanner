@@ -38,14 +38,6 @@
 		<ApplicationVersion>3</ApplicationVersion>
 
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">26.0</SupportedOSPlatformVersion>
-
-		<!-- AdMob App ID, substituted into Platforms/Android/AndroidManifest.xml's ${admobAppId} token (a
-		     malformed / placeholder value here crashes the app at startup, before any C# runs: the SDK
-		     checks it in a ContentProvider that attaches ahead of MauiProgram). This is the real App ID from
-		     the AdMob console (owner filled it in, 2026-09-29): AdsConfig.cs has the matching real ad unit
-		     IDs, so real ads now serve in every build (AdsConfig.HasRealIds == true) — be careful not to tap
-		     ads on a test device unless it is registered as a Test device in the AdMob console. -->
-		<AndroidManifestPlaceholders>admobAppId=ca-app-pub-5182523644830048~7154978937</AndroidManifestPlaceholders>
 	</PropertyGroup>
 
 	<!-- Release: every assembly compiled ahead of time with LLVM. Mono JIT / plain AOT code is slow for the image loops
@@ -62,6 +54,23 @@
 	<PropertyGroup Condition="'$(Configuration)' == 'Release'">
 		<AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
 		<EnableLLVM>true</EnableLLVM>
+
+		<!-- R8 code shrinking for the Java/Kotlin side (AndroidX, Play Services, ML Kit, the Unity LevelPlay ads
+		     SDK and its full Unity Ads network adapter, ...) and .NET/C# IL trimming, same two-lever fix just
+		     applied to the sibling PdfReader repo (2026-10-12) after Play Console flagged it under "DEX code
+		     optimization" (shrinking/optimization/obfuscation must each be >=25%, enforced from Feb 2027) for
+		     exceeding 10 MB. AndroidLinkMode=Full lets .NET for Android prove which bound Java types in a
+		     referenced binding assembly are actually reachable, instead of defensively keeping every type in
+		     every referenced assembly; AppLovin's AND AdMob's SDKs are both now dropped from this app's
+		     dependency graph entirely (the same-day DocScanner.AdsService.{Core,AdMob,AppLovin,LevelPlay} split
+		     below, plus removing the app's own direct Plugin.AdMob reference once its only remaining caller,
+		     SettingsViewModel.cs's "Privacy options" row, was removed; it was always inert anyway since
+		     AdMob is not the active provider). Needs an
+		     on-device smoke test of every feature (scan, export, OCR if any, ads, Play Billing, Play Core
+		     update) before shipping, not just "it still builds"; see PdfReader.csproj's own comment for the
+		     full risk/reward writeup (same lesson applies here unchanged). -->
+		<AndroidLinkTool>r8</AndroidLinkTool>
+		<AndroidLinkMode>Full</AndroidLinkMode>
 	</PropertyGroup>
 
 	<!-- Ads MASTER switch (AdsProviderOptions.IsAdsEnabled in DocScanner.AdsService; same property, same meaning as in
@@ -106,10 +115,6 @@
 		<!-- MIT -->
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
 		<PackageReference Include="Plugin.InAppBilling" Version="10.0.0" />
-		<!-- MIT: banner + interstitial ads for the free tier (see Services/AdsService.cs). Pulls in the
-		     Google Mobile Ads SDK itself, which is proprietary (Google's own terms, not MIT); see
-		     THIRD-PARTY-NOTICES.md. -->
-		<PackageReference Include="Plugin.AdMob" Version="10.0.90" />
 		<!-- Apache-2.0 (AndroidX CameraX) / MIT (.NET bindings): the in-app document camera (Platforms/Android/Camera) -->
 		<PackageReference Include="Xamarin.AndroidX.Camera.Camera2" Version="1.6.2" />
 		<PackageReference Include="Xamarin.AndroidX.Camera.Lifecycle" Version="1.6.2" />
@@ -122,7 +127,16 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\DocScanner.AdsService\DocScanner.AdsService.csproj" />
+		<!-- One project per ad network (2026-10-12 split, replacing the single DocScanner.AdsService project
+		     that referenced all three providers' SDKs unconditionally): only the network actually used, Unity
+		     LevelPlay (MauiProgram.cs's UseLevelPlayAds call), is referenced, so AppLovin's SDK is never even a
+		     candidate dependency here. DocScanner.AdsService.Core (IAdsClient, the banner View/Handler) comes
+		     along transitively through this reference. AdMob's own provider project is also NOT referenced
+		     (same day: the app's separate direct Plugin.AdMob PackageReference it used to need for
+		     SettingsViewModel.cs's "Privacy options" row is gone too, see that file and SettingsPage.xaml).
+		     To switch the active provider: reference DocScanner.AdsService.AppLovin or .AdMob here instead and
+		     call that project's own UseAppLovinAds/UseAdMobAds in MauiProgram.cs instead of UseLevelPlayAds. -->
+		<ProjectReference Include="..\DocScanner.AdsService.LevelPlay\DocScanner.AdsService.LevelPlay.csproj" />
 		<ProjectReference Include="..\DocScanner.Core\DocScanner.Core.csproj" />
 	</ItemGroup>
 

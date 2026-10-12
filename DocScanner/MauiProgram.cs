@@ -40,11 +40,12 @@ public static class MauiProgram
 			.UseMauiApp<App>()
 			// Ad provider: Unity LevelPlay (switched 2026-10-08 -- AdMob account closed by Google, appeal
 			// pending; AppLovin not accepting new publishers). AdMobOptions/AppLovinOptions are both still fully
-			// written and build-verified in DocScanner.AdsService (see CLAUDE.md) if either becomes usable again
-			// later -- switching back is only changing which options record is constructed here.
+			// written in their own DocScanner.AdsService.AdMob / .AppLovin projects (see CLAUDE.md) if either
+			// becomes usable again later -- switching back means referencing that project from DocScanner.csproj
+			// instead of DocScanner.AdsService.LevelPlay, and calling its UseAdMobAds/UseAppLovinAds here instead.
 			// Test device for this provider is registered on the LevelPlay dashboard itself (Settings > Testing
 			// > this app's GAID), not anything read from code.
-			.UseAdsService(new LevelPlayOptions(
+			.UseLevelPlayAds(new LevelPlayOptions(
 				AppKey: LevelPlayConfig.AppKey,
 				BannerAdUnitId: LevelPlayConfig.BannerAdUnitId,
 				InterstitialAdUnitId: LevelPlayConfig.InterstitialAdUnitId,

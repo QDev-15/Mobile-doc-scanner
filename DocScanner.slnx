@@ -1,5 +1,8 @@
 <Solution>
-  <Project Path="DocScanner.AdsService/DocScanner.AdsService.csproj" />
+  <Project Path="DocScanner.AdsService.Core/DocScanner.AdsService.Core.csproj" />
+  <Project Path="DocScanner.AdsService.AdMob/DocScanner.AdsService.AdMob.csproj" />
+  <Project Path="DocScanner.AdsService.AppLovin/DocScanner.AdsService.AppLovin.csproj" />
+  <Project Path="DocScanner.AdsService.LevelPlay/DocScanner.AdsService.LevelPlay.csproj" />
   <Project Path="DocScanner.Core.Tests/DocScanner.Core.Tests.csproj" />
   <Project Path="DocScanner.Core/DocScanner.Core.csproj" />
   <Project Path="DocScanner.Shared.Tests/DocScanner.Shared.Tests.csproj" />
