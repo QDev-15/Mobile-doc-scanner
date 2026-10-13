@@ -60,69 +60,86 @@
             </Border>
         </DataTemplate>
 
-        <!-- A document row: colored icon tile, name, pages · date, a pill badge with the page count. Swipe left to
-             delete; long press to select / drag. -->
+        <!-- A document row: colored icon tile, name, pages · date, a pill badge with the page count, ⋮ for the
+             menu. Swipe left to delete; long press to select / drag. -->
         <DataTemplate x:Key="DocumentRow" x:DataType="vm:DocumentItem">
-            <SwipeView>
-                <SwipeView.RightItems>
-                    <SwipeItems>
-                        <SwipeItem Text="Xoá" BackgroundColor="#D32F2F" Command="{Binding DeleteCommand}" />
-                    </SwipeItems>
-                </SwipeView.RightItems>
-                <Border StrokeThickness="0" Padding="12,10" Margin="0,0,0,10">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="18" />
-                    </Border.StrokeShape>
-                    <Border.Shadow>
-                        <Shadow Brush="{AppThemeBinding Light={StaticResource OnSurface}, Dark=Black}" Opacity="{AppThemeBinding Light=0.06, Dark=0.3}" Radius="6" Offset="0,2" />
-                    </Border.Shadow>
-                    <Border.Triggers>
-                        <DataTrigger TargetType="Border" Binding="{Binding IsSelected}" Value="True">
-                            <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource Secondary}, Dark=#332E52}" />
-                        </DataTrigger>
-                        <DataTrigger TargetType="Border" Binding="{Binding IsSelected}" Value="False">
-                            <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource CardBackground}, Dark={StaticResource CardBackgroundDark}}" />
-                        </DataTrigger>
-                    </Border.Triggers>
-                    <Grid ColumnDefinitions="Auto,50,*,Auto" ColumnSpacing="13">
-                        <Grid.GestureRecognizers>
-                            <TapGestureRecognizer Command="{Binding OpenCommand}" />
-                            <DragGestureRecognizer CanDrag="True" DragStartingCommand="{Binding DragStartingCommand}" />
-                        </Grid.GestureRecognizers>
-                        <!-- Tick box, only in selection mode -->
-                        <Label IsVisible="{Binding IsSelecting}" Text="{x:Static views:Icons.Unchecked}" FontFamily="Icons" FontSize="24"
-                               VerticalOptions="Center" WidthRequest="26" TextColor="{AppThemeBinding Light={StaticResource Muted}, Dark={StaticResource MutedDark}}">
-                            <Label.Triggers>
-                                <DataTrigger TargetType="Label" Binding="{Binding IsSelected}" Value="True">
-                                    <Setter Property="Text" Value="{x:Static views:Icons.Checked}" />
-                                    <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
-                                </DataTrigger>
-                            </Label.Triggers>
-                        </Label>
-                        <Border Grid.Column="1" WidthRequest="50" HeightRequest="50" StrokeThickness="0"
-                                BackgroundColor="{AppThemeBinding Light=#EDE8FB, Dark=#342F4D}">
-                            <Border.StrokeShape>
-                                <RoundRectangle CornerRadius="14" />
-                            </Border.StrokeShape>
-                            <Image Source="{Binding Thumb}" Aspect="AspectFill" />
-                        </Border>
-                        <VerticalStackLayout Grid.Column="2" VerticalOptions="Center" Spacing="3">
-                            <Label Text="{Binding Name}" FontSize="14" FontFamily="OpenSansSemibold" LineBreakMode="TailTruncation"
-                                   TextColor="{AppThemeBinding Light={StaticResource OnSurface}, Dark={StaticResource OnSurfaceDark}}" />
-                            <Label Text="{Binding Subtitle}" FontSize="11.5" LineBreakMode="TailTruncation"
-                                   TextColor="{AppThemeBinding Light={StaticResource Muted}, Dark={StaticResource MutedDark}}" />
-                        </VerticalStackLayout>
-                        <Border Grid.Column="3" StrokeThickness="0" BackgroundColor="{AppThemeBinding Light={StaticResource Surface}, Dark=#2E2A48}"
-                                Padding="10,4" VerticalOptions="Center">
-                            <Border.StrokeShape>
-                                <RoundRectangle CornerRadius="999" />
-                            </Border.StrokeShape>
-                            <Label Text="{Binding PageCountText}" FontSize="11" FontFamily="OpenSansSemibold"
-                                   TextColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
-                        </Border>
-                    </Grid>
-                </Border>
-            </SwipeView>
+            <!-- The ⋮ button is a SIBLING of SwipeView (its own Grid column), not nested inside it: a
+                 TapGestureRecognizer on a child of SwipeView's own content does not reliably receive touches on
+                 Android (SwipeView's gesture handling swallows it): confirmed on-device 2026-10-13, tapping ⋮ did
+                 nothing when it was a column of the Grid SwipeView itself wraps. A plain overlay (⋮ drawn on top of
+                 SwipeView, same Grid cell) hit-test correctly but left a stray gray box where SwipeView's own
+                 native background showed through the reserved-but-empty space behind it; a real sibling column
+                 avoids that without needing to reserve/fake anything. -->
+            <Grid ColumnDefinitions="*,46" ColumnSpacing="2">
+                <SwipeView>
+                    <SwipeView.RightItems>
+                        <SwipeItems>
+                            <SwipeItem Text="Xoá" BackgroundColor="#D32F2F" Command="{Binding DeleteCommand}" />
+                        </SwipeItems>
+                    </SwipeView.RightItems>
+                    <Border StrokeThickness="0" Padding="12,10" Margin="0,0,0,10">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="18" />
+                        </Border.StrokeShape>
+                        <Border.Shadow>
+                            <Shadow Brush="{AppThemeBinding Light={StaticResource OnSurface}, Dark=Black}" Opacity="{AppThemeBinding Light=0.06, Dark=0.3}" Radius="6" Offset="0,2" />
+                        </Border.Shadow>
+                        <Border.Triggers>
+                            <DataTrigger TargetType="Border" Binding="{Binding IsSelected}" Value="True">
+                                <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource Secondary}, Dark=#332E52}" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Border" Binding="{Binding IsSelected}" Value="False">
+                                <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource CardBackground}, Dark={StaticResource CardBackgroundDark}}" />
+                            </DataTrigger>
+                        </Border.Triggers>
+                        <Grid ColumnDefinitions="Auto,50,*,Auto" ColumnSpacing="13">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding OpenCommand}" />
+                                <DragGestureRecognizer CanDrag="True" DragStartingCommand="{Binding DragStartingCommand}" />
+                            </Grid.GestureRecognizers>
+                            <!-- Tick box, only in selection mode -->
+                            <Label IsVisible="{Binding IsSelecting}" Text="{x:Static views:Icons.Unchecked}" FontFamily="Icons" FontSize="24"
+                                   VerticalOptions="Center" WidthRequest="26" TextColor="{AppThemeBinding Light={StaticResource Muted}, Dark={StaticResource MutedDark}}">
+                                <Label.Triggers>
+                                    <DataTrigger TargetType="Label" Binding="{Binding IsSelected}" Value="True">
+                                        <Setter Property="Text" Value="{x:Static views:Icons.Checked}" />
+                                        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
+                                    </DataTrigger>
+                                </Label.Triggers>
+                            </Label>
+                            <Border Grid.Column="1" WidthRequest="50" HeightRequest="50" StrokeThickness="0"
+                                    BackgroundColor="{AppThemeBinding Light=#EDE8FB, Dark=#342F4D}">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="14" />
+                                </Border.StrokeShape>
+                                <Image Source="{Binding Thumb}" Aspect="AspectFill" />
+                            </Border>
+                            <VerticalStackLayout Grid.Column="2" VerticalOptions="Center" Spacing="3">
+                                <Label Text="{Binding Name}" FontSize="14" FontFamily="OpenSansSemibold" LineBreakMode="TailTruncation"
+                                       TextColor="{AppThemeBinding Light={StaticResource OnSurface}, Dark={StaticResource OnSurfaceDark}}" />
+                                <Label Text="{Binding Subtitle}" FontSize="11.5" LineBreakMode="TailTruncation"
+                                       TextColor="{AppThemeBinding Light={StaticResource Muted}, Dark={StaticResource MutedDark}}" />
+                            </VerticalStackLayout>
+                            <Border Grid.Column="3" StrokeThickness="0" BackgroundColor="{AppThemeBinding Light={StaticResource Surface}, Dark=#2E2A48}"
+                                    Padding="10,4" VerticalOptions="Center">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="999" />
+                                </Border.StrokeShape>
+                                <Label Text="{Binding PageCountText}" FontSize="11" FontFamily="OpenSansSemibold"
+                                       TextColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
+                            </Border>
+                        </Grid>
+                    </Border>
+                </SwipeView>
+                <!-- ⋮: Xem / Đổi tên / Xuất PDF / Chia sẻ / ... (owner's request, 2026-10-13) -->
+                <Label Grid.Column="1" Text="{x:Static views:Icons.More}" FontFamily="Icons" FontSize="22"
+                       HorizontalTextAlignment="Center" VerticalTextAlignment="Center" Margin="0,0,0,10"
+                       TextColor="{AppThemeBinding Light={StaticResource Muted}, Dark={StaticResource MutedDark}}">
+                    <Label.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding MenuCommand}" />
+                    </Label.GestureRecognizers>
+                </Label>
+            </Grid>
         </DataTemplate>
 
         <views:HomeRowSelector x:Key="RowSelector" Folder="{StaticResource FolderRow}" Document="{StaticResource DocumentRow}" />
@@ -176,7 +193,7 @@
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Command="{Binding PickPdfCommand}" />
                     </Border.GestureRecognizers>
-                    <Label Text="{x:Static views:Icons.Pdf}" FontFamily="Icons" FontSize="17"
+                    <Label Text="{x:Static views:Icons.OpenPdf}" FontFamily="Icons" FontSize="17"
                            TextColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}"
                            HorizontalTextAlignment="Center" VerticalTextAlignment="Center" />
                 </Border>

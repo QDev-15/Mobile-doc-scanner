@@ -46,11 +46,16 @@ public static class DocumentCleanup
         int step = Math.Max(1, xs.Count / 60000);
         int diag = (int)Math.Ceiling(Math.Sqrt((double)small.Width * small.Width + (double)small.Height * small.Height));
 
+        // Hoisted out of Score (called ~82 times per page: 61 coarse-search steps + 21 fine-search steps) instead
+        // of allocated fresh each call -- diag, and so the array length, is fixed for the whole DetectSkew call.
+        // Android pauses the Java-bridge GC on large-object collection (tens of ms to over a second, see
+        // DocumentEdgeDetector.Scratch's comment on the same cost), so per-page churn like this is worth avoiding.
+        var bins = new int[2 * diag + 2];
         double Score(double angleDeg)
         {
             double a = angleDeg * Math.PI / 180;
             double sin = Math.Sin(a), cos = Math.Cos(a);
-            var bins = new int[2 * diag + 2];
+            Array.Clear(bins);
             for (int i = 0; i < xs.Count; i += step)
             {
                 int r = (int)Math.Round(ys[i] * cos - xs[i] * sin) + diag;

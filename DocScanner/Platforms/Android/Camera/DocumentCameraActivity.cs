@@ -40,6 +40,8 @@ public sealed class DocumentCameraActivity : AppCompatActivity
 	public const string ExtraPhotos = "photos";
 	public const string ExtraError = "error";
 	private const string AutoPreference = "camera_auto_capture";
+	private const string StatePhotos = "docscanner_camera_photos";
+	private const string StateBookMode = "docscanner_camera_book_mode";
 
 	/// <summary>Long edge of the frames given to the detector (its live setting: a few frames a second on a phone).</summary>
 	private const int AnalysisEdge = DocumentEdgeDetector.LiveAnalysisEdge;
@@ -84,6 +86,7 @@ public sealed class DocumentCameraActivity : AppCompatActivity
 
 		SetContentView(BuildLayout());
 		OnBackPressedDispatcher.AddCallback(this, new BackCallback(this));
+		if (savedInstanceState != null) RestoreSession(savedInstanceState);
 		UpdateAutoChip();
 		UpdatePageModeChips();
 		UpdateCount();
@@ -110,8 +113,39 @@ public sealed class DocumentCameraActivity : AppCompatActivity
 		}), ContextCompat.GetMainExecutor(this));
 	}
 
+	/// <summary>In-progress multi-shot sessions otherwise live only in instance fields: a low-memory kill (or
+	/// "don't keep activities") that Android still recreates from the back stack would come back to an empty
+	/// _photos and orphan the already-captured JPEGs on disk. ConfigurationChanges above does not help here -
+	/// it only suppresses recreation for the listed configuration changes, not memory-pressure destruction.</summary>
+	protected override void OnSaveInstanceState(Bundle outState)
+	{
+		base.OnSaveInstanceState(outState);
+		outState.PutStringArray(StatePhotos, _photos.ToArray());
+		outState.PutInt(StateBookMode, (int)_bookMode);
+	}
+
+	private void RestoreSession(Bundle savedInstanceState)
+	{
+		string[]? photos = savedInstanceState.GetStringArray(StatePhotos);
+		if (photos != null)
+		{
+			// Only re-adopt files that are still actually on disk (RemoveLeftovers, or the user clearing app
+			// cache, could have taken one between save and restore).
+			_photos.AddRange(photos.Where(File.Exists));
+		}
+		_bookMode = (BookMode)savedInstanceState.GetInt(StateBookMode, (int)BookMode.OnePage);
+		_overlay.TwoPage = _bookMode == BookMode.TwoPage;
+		if (_photos.Count > 0) Task.Run(() => LoadThumb(_photos[^1]));
+	}
+
 	protected override void OnDestroy()
 	{
+		// Guards OnFrame/TakePicture against a frame that was already in flight on the analysis thread: without
+		// this, a Runnable posted just before a non-Finish() teardown (low-memory kill, "don't keep activities")
+		// can still run after UnbindAll() below and call into the now-unbound _capture/_camera, throwing from a
+		// Java/JNI call with nothing upstream to catch it. The normal Finish()/Fail() paths already set this
+		// before Finish(), so this only matters for the teardown that skips them.
+		_closing = true;
 		_provider?.UnbindAll();
 		_analysisThread?.Shutdown();
 		base.OnDestroy();
@@ -525,8 +559,7 @@ public sealed class DocumentCameraActivity : AppCompatActivity
 						AddPhoto(path); // keep the shot rather than lose it: one page, same as "1 trang"
 						return;
 					}
-					AddPhoto(left!);
-					AddPhoto(right!);
+					AddPhotoPair(left!, right!);
 				});
 			});
 			return;
@@ -543,6 +576,20 @@ public sealed class DocumentCameraActivity : AppCompatActivity
 		if (_finishWhenSaved) { Finish(keep: true); return; }
 		_hint.Text = "Đã chụp · đặt trang tiếp theo";
 		Task.Run(() => LoadThumb(path));
+	}
+
+	/// <summary>Adds a split spread's two pages as one atomic step. Both halves must land in _photos before the
+	/// single _finishWhenSaved check/Finish() below runs - adding them via two separate AddPhoto() calls let the
+	/// first call's own finish-check fire (and snapshot _photos for the Activity result) between the two adds,
+	/// dropping the second half whenever "Xong" was tapped while the split was still running.</summary>
+	private void AddPhotoPair(string left, string right)
+	{
+		_photos.Add(left);
+		_photos.Add(right);
+		UpdateCount();
+		if (_finishWhenSaved) { Finish(keep: true); return; }
+		_hint.Text = "Đã chụp · đặt trang tiếp theo";
+		Task.Run(() => LoadThumb(right));
 	}
 
 	/// <summary>A small copy of the latest page for the corner thumbnail, decoded off the UI thread.</summary>

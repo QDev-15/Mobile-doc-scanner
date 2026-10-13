@@ -30,6 +30,7 @@ public sealed class PdfExportService(DocumentStore store, PageIngestQueue queue,
 
         IReadOnlyList<PageRecord> pages = store.Pages(docId);
         var sources = new List<PdfPageSource>();
+        var pageNumbers = new List<int>(); // 1-based document page number behind each entry of `sources`, same order
         var skipped = new List<int>();
         for (int i = 0; i < pages.Count; i++)
         {
@@ -37,6 +38,7 @@ public sealed class PdfExportService(DocumentStore store, PageIngestQueue queue,
             string file = p.CroppedRevision > 0 ? store.CroppedPath(docId, p) : "";
             if (p.State != PageState.Ready || p.NeedsRender || !File.Exists(file)) { skipped.Add(i + 1); continue; }
             sources.Add(PageLayout(p, file));
+            pageNumbers.Add(i + 1);
         }
         if (sources.Count == 0) throw new InvalidOperationException("Không có trang nào xuất được (ảnh lỗi hoặc chưa cắt được).");
 
@@ -45,7 +47,13 @@ public sealed class PdfExportService(DocumentStore store, PageIngestQueue queue,
         string work = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(outputPath))!, ".work_" + Guid.NewGuid().ToString("N"));
         try
         {
-            sources = await ShrinkColorPagesAsync(sources, quality, work, progress, ct);
+            // A page can be edited and re-rendered (a new cropped_{revision} file, the old one deleted once it is saved)
+            // while this very export is already reading the old file: that page is skipped here, not a failed export --
+            // the same "one bad page must not sink the rest" rule ImportService and RenderPreviewAsync already follow.
+            List<int> vanished;
+            (sources, pageNumbers, vanished) = await ShrinkColorPagesAsync(sources, pageNumbers, quality, work, progress, ct);
+            if (vanished.Count > 0) { skipped.AddRange(vanished); skipped.Sort(); }
+            if (sources.Count == 0) throw new InvalidOperationException("Không có trang nào xuất được (ảnh lỗi hoặc chưa cắt được).");
             await using (FileStream fs = File.Create(tmp))
             {
                 // Forwarded synchronously: Progress<T> would post each report and could deliver them after the export returned.
@@ -71,30 +79,47 @@ public sealed class PdfExportService(DocumentStore store, PageIngestQueue queue,
     /// PNG, anti-aliased edges) are shrunk to <see cref="PdfQuality.GrayDpi"/> the same way, staying anti-aliased,
     /// except at <see cref="PdfQuality.High"/> (kept exactly as saved) and <see cref="PdfQuality.Small"/> (no
     /// <see cref="PdfQuality.GrayDpi"/>: becomes 1-bit instead, the smallest a page of text gets).</summary>
-    private async Task<List<PdfPageSource>> ShrinkColorPagesAsync(List<PdfPageSource> sources, PdfQuality quality, string work,
+    /// <returns>The re-encoded pages and their page numbers (same order, both possibly shorter than the input: see
+    /// <paramref name="pageNumbers"/>), plus the page numbers of any page whose file vanished underneath this call.</returns>
+    private async Task<(List<PdfPageSource> Sources, List<int> PageNumbers, List<int> Vanished)> ShrinkColorPagesAsync(
+        List<PdfPageSource> sources, List<int> pageNumbers, PdfQuality quality, string work,
         IProgress<ExportProgress>? progress, CancellationToken ct)
     {
         var result = new List<PdfPageSource>(sources.Count);
+        var kept = new List<int>(sources.Count);
+        var vanished = new List<int>();
         for (int i = 0; i < sources.Count; i++)
         {
             ct.ThrowIfCancellationRequested();
             progress?.Report(new ExportProgress("Đang nén trang", i + 1, sources.Count));
             PdfPageSource page = sources[i];
-            if (!IsJpeg(page.ImageFile))
+            try
             {
-                result.Add(quality == PdfQuality.High ? page
-                    : quality.GrayLongEdgePx is { } grayEdge ? await ShrinkGrayAsync(page, i, grayEdge, work, ct)
-                    : await BilevelAsync(page, i, work, ct));
-                continue;
+                if (!IsJpeg(page.ImageFile))
+                {
+                    result.Add(quality == PdfQuality.High ? page
+                        : quality.GrayLongEdgePx is { } grayEdge ? await ShrinkGrayAsync(page, i, grayEdge, work, ct)
+                        : await BilevelAsync(page, i, work, ct));
+                }
+                else
+                {
+                    Directory.CreateDirectory(work);
+                    string file = Path.Combine(work, $"{i}.jpg");
+                    RgbImage img = await images.LoadRgbAsync(page.ImageFile, quality.LongEdgePx, ct);
+                    await images.SaveJpegAsync(img, file, quality.JpegQuality, ct);
+                    result.Add(page with { ImageFile = file });
+                }
+                kept.Add(pageNumbers[i]);
             }
-
-            Directory.CreateDirectory(work);
-            string file = Path.Combine(work, $"{i}.jpg");
-            RgbImage img = await images.LoadRgbAsync(page.ImageFile, quality.LongEdgePx, ct);
-            await images.SaveJpegAsync(img, file, quality.JpegQuality, ct);
-            result.Add(page with { ImageFile = file });
+            catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+            {
+                // The page was edited and re-rendered (a new revision) while this export was already under way, and the
+                // old render it started with is gone (CropRenderService deletes a revision only once the next one is
+                // saved): skip just this page instead of failing the whole export. The next export picks up the new one.
+                vanished.Add(pageNumbers[i]);
+            }
         }
-        return result;
+        return (result, kept, vanished);
     }
 
     /// <summary>A smooth black-and-white page as 1-bit (dark below 128: the same strokes, without the soft edges).

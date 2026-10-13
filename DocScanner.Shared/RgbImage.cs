@@ -67,7 +67,7 @@ public sealed class RgbImage
     public RgbImage Resize(int width, int height)
     {
         if (width == Width && height == Height) return this;
-        int factor = Math.Max(1, Math.Min(Width / width, Height / height));
+        int factor = Math.Max(1, Math.Min(Width / Math.Max(1, width), Height / Math.Max(1, height)));
         RgbImage s = Downscale(factor);
         var dst = new RgbImage(width, height);
         double kx = (double)s.Width / width, ky = (double)s.Height / height;

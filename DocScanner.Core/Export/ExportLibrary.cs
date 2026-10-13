@@ -23,6 +23,19 @@ public sealed class ExportLibrary(string folder)
         return path;
     }
 
+    /// <summary>A free path for the exact name the user typed (owner's request, 2026-10-13: a name prompt before
+    /// export instead of the automatic document-name-plus-timestamp <see cref="NewPath"/> always used): no
+    /// timestamp appended, just " (2)", " (3)"... if that exact name is already taken.</summary>
+    public string PathForName(string name)
+    {
+        Directory.CreateDirectory(folder);
+        string stem = Path.GetFileNameWithoutExtension(PdfExportService.FileNameFor(name));
+        if (stem.Length == 0) stem = "Tài liệu";
+        string path = Path.Combine(folder, stem + ".pdf");
+        for (int i = 2; File.Exists(path); i++) path = Path.Combine(folder, $"{stem} ({i}).pdf");
+        return path;
+    }
+
     /// <summary>All exported PDFs, newest first (unfinished ".partial" files are not listed).</summary>
     public IReadOnlyList<ExportedFile> List()
     {

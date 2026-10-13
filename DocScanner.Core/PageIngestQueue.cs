@@ -363,7 +363,16 @@ public sealed class PageIngestQueue
             p.Error = ex.Message;
         });
 
-    private void Raise(Job job) => PageUpdated?.Invoke(new PageUpdate(job.DocId, job.PageId));
+    private void Raise(Job job)
+    {
+        try { PageUpdated?.Invoke(new PageUpdate(job.DocId, job.PageId)); }
+        catch (Exception ex)
+        {
+            // A throwing subscriber must never escape here: WorkerAsync's finally (which decrements _running) runs
+            // either way, but letting the exception through would still abort the worker mid-queue.
+            Perf.Log("ingest: PageUpdated subscriber threw: " + ex.Message);
+        }
+    }
 
     private static TaskCompletionSource NewCompleted()
     {

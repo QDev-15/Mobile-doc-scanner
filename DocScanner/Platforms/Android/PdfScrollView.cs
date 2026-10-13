@@ -76,6 +76,7 @@ internal sealed class PdfScrollView : View,
 		_generation++;
 		int gen = _generation;
 		EvictAll();
+		_pages?.Dispose(); // the previous document's ParcelFileDescriptor/PdfRenderer native handle, otherwise leaked
 		_pages = pages;
 		_pageSizes.Clear();
 		_layout.Clear();

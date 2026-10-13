@@ -9,9 +9,11 @@ namespace DocScanner.Services;
 /// Billing; everything else asks <see cref="ILicenseService"/>, which is why the trial rule itself
 /// (<see cref="TrialPolicy"/>) has no dependency on this class and is unit-tested without it.
 ///
-/// The exports-used counter and the last-known Pro flag are cached locally (<see cref="Preferences"/>)
-/// so the app has an instant, offline answer to "can I export" on every screen; <see cref="RefreshAsync"/>
-/// then corrects that cache from Play's own purchase record, which is the actual source of truth. See
+/// The exports-used counter is cached locally (<see cref="Preferences"/>) for an instant, offline answer
+/// to "can I export" on every screen. The last-known Pro flag is cached in <see cref="SecureStorage"/>
+/// instead (Keystore-backed, unlike plain Preferences, which any SharedPreferences-editor app can rewrite
+/// on a rooted device): it is read asynchronously right at startup, and <see cref="RefreshAsync"/> then
+/// corrects it from Play's own purchase record, which is the actual source of truth. See
 /// MOBILE-STATUS.md, section "License &amp; khuyến mãi", for why a custom license server was not built.
 /// </summary>
 public sealed class LicenseService : ILicenseService
@@ -26,9 +28,41 @@ public sealed class LicenseService : ILicenseService
 
     private readonly SemaphoreSlim _gate = new(1, 1);
 
+    // True once a real Play Billing answer (ApplyProAsync, from RefreshAsync/PurchaseProAsync) has landed: that is
+    // always the authoritative source, so the slower, merely-cached SecureStorage read (LoadCachedProAsync, fired
+    // once from the constructor) must not clobber it if it resolves afterwards -- App.OnStart() kicks off its own
+    // RefreshAsync right after construction, with no ordering between the two otherwise.
+    private bool _appliedFromBilling;
+
     public LicenseService()
     {
-        State = TrialPolicy.Evaluate(Preferences.Default.Get(CachedIsProKey, false), Preferences.Default.Get(ExportsUsedKey, 0));
+        // Pro starts false until LoadCachedProAsync resolves (SecureStorage has no synchronous read); it is a local
+        // Keystore read with no network, so that normally lands within a frame, well before anyone can act on it.
+        State = TrialPolicy.Evaluate(false, Preferences.Default.Get(ExportsUsedKey, 0));
+        Preferences.Default.Remove(CachedIsProKey); // migrated off the old plaintext copy (see class remarks)
+        _ = LoadCachedProAsync();
+    }
+
+    private async Task LoadCachedProAsync()
+    {
+        bool isPro = false;
+        try
+        {
+            string? raw = await SecureStorage.Default.GetAsync(CachedIsProKey);
+            bool.TryParse(raw, out isPro);
+        }
+        catch (Exception)
+        {
+            // Some OEM Keystores throw on first access; treat that as "not Pro" rather than crash startup.
+        }
+        if (_appliedFromBilling) return; // a real RefreshAsync/PurchaseProAsync already answered first; don't overwrite it with the stale cache
+        State = State with { IsPro = isPro };
+        try { Changed?.Invoke(); }
+        catch (Exception)
+        {
+            // This runs fire-and-forget from the constructor (nobody awaits LoadCachedProAsync): an exception here
+            // would otherwise fault an unobserved Task this early in app startup instead of surfacing anywhere.
+        }
     }
 
     public LicenseState State { get; private set; }
@@ -140,7 +174,7 @@ public sealed class LicenseService : ILicenseService
                     try { await billing.FinalizePurchaseOfProductAsync([ProProductId]); }
                     catch (Exception) { /* the purchase still counts as owned even if acknowledging failed here; retried next refresh */ }
                 }
-                ApplyPro(owned != null);
+                await ApplyProAsync(owned != null);
 
                 IEnumerable<InAppBillingProduct>? products = await billing.GetProductInfoAsync(ItemType.InAppPurchase, [ProProductId]);
                 ProPriceText = products?.FirstOrDefault(p => p.ProductId == ProProductId)?.LocalizedPrice;
@@ -157,9 +191,15 @@ public sealed class LicenseService : ILicenseService
         }
     }
 
-    private void ApplyPro(bool isPro)
+    private async Task ApplyProAsync(bool isPro)
     {
-        Preferences.Default.Set(CachedIsProKey, isPro);
+        try { await SecureStorage.Default.SetAsync(CachedIsProKey, isPro.ToString()); }
+        catch (Exception)
+        {
+            // Same OEM-Keystore caveat as LoadCachedProAsync: the in-memory State below is still correct for
+            // this session either way, only the offline-startup cache write is best-effort.
+        }
+        _appliedFromBilling = true;
         State = State with { IsPro = isPro };
     }
 }

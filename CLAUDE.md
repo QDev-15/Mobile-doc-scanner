@@ -1080,3 +1080,139 @@ giống `AdMobProvider.CreateBannerView` đã có sẵn cỡ "adaptive" theo chi
   (qua WiFi debugging), xác nhận bằng cả log (`adSize: CUSTOM 411x50`, đúng chiều rộng màn hình Note10+) lẫn ảnh
   chụp màn hình (banner liền mép trái-phải, không còn khoảng trống). PdfReader mới build thư viện riêng, owner tự
   build/cài app để xác nhận nốt (chưa cài thử app đầy đủ đợt này).
+
+### Soát toàn bộ DocScanner tìm bug, ưu tiên crash/performance (đợt 2026-10-13)
+Owner yêu cầu rà hết cả repo (149 file .cs), sửa tới khi hết bug, ưu tiên crash/performance. Chia làm nhiều pass
+theo khu vực để không đụng file của nhau: diff chưa commit (19 file, dùng `/code-review` skill) -> native Android
+(`Platforms/Android`, 18 file) -> xử lý ảnh (`DocScanner.Shared`, 21 file) -> business logic (`DocScanner.Core`, 26
+file) -> UI (`Views`/`ViewModels`/`Services` còn lại, ~65 file). 3 pass sau chạy qua Agent nền; 1 pass
+(`DocScanner.Shared`) phải tự làm tay vì agent bị dính giới hạn phiên (rate limit) giữa chừng -- agent đó kịp sửa 1
+lỗi (chia cho 0 trong `RgbImage.Resize`) trước khi dừng, phần còn lại (21 file) tôi đọc và sửa trực tiếp.
+
+**Tổng cộng 18 lỗi thật tìm và sửa**, build + test xanh sau mỗi pass (`DocScanner.Shared.Tests` 137/137,
+`DocScanner.Core.Tests` 197/197 -- tăng 1 vì thêm test tái hiện đúng race condition cho lỗi export, `DocScanner.csproj`
+0 lỗi). Đáng chú ý nhất (crash thật, không phải lý thuyết):
+
+- **`PdfPages.Dispose()` gọi 2 lần** (`DocScanner/Platforms/Android/PdfPages.cs`): `PdfViewerPage` gọi `Clear()` rồi
+  `_pages?.Dispose()` trên cùng 1 instance -- `PdfRenderer.close()` của Android ném `IllegalStateException` khi gọi
+  lần 2, **crash mỗi lần đóng màn xem PDF bình thường** (không cần điều kiện đặc biệt gì). Sửa: thêm cờ `_disposed`,
+  `Dispose()` giờ an toàn khi gọi nhiều lần.
+- **`DocumentCameraActivity.OnDestroy()` thiếu cờ `_closing`**: hệ thống tự huỷ activity (low-memory kill) không đi
+  qua đường tắt máy bình thường, frame camera đang xử lý dở có thể gọi chụp ảnh trên camera đã unbind.
+- **Xuất PDF huỷ toàn bộ thay vì bỏ qua 1 trang** (`DocScanner.Core/Export/PdfExportService.cs`): sửa trang khác
+  trong lúc đang xuất (pipeline nền xoá file ảnh cũ) làm `FileNotFoundException` lan ra ngoài, huỷ cả lần xuất chứ
+  không chỉ trang đó. Có test tái hiện đúng race condition kèm theo.
+- **3 chỗ cùng 1 dạng crash**: `SettingsViewModel.LoadStorageAsync`, `SignaturePage.OnAppearing`,
+  `HomeViewModel.RefreshAsync` (cái thứ 3 tôi tự tìm thêm sau khi agent UI flagged nhưng không dám sửa vì file đó
+  pass diff đã đụng vào) -- cả 3 đều liệt kê thư mục tài liệu trong 1 `async void OnAppearing`, trong khi pipeline
+  nền có thể xoá/thay file bất cứ lúc nào -> `IOException` không bắt được crash cả app, kể cả ở màn hình chính
+  (HomeViewModel) vốn là màn vào nhiều nhất. Sửa bằng try/catch, bỏ qua lần đó, lần refresh sau tự bình thường.
+- **`ViewerPage` không giải phóng bitmap full-res (tới 4096px, hàng chục MB) khi rời trang** -- tôi tự tìm/sửa sau
+  khi agent UI thấy nhưng không dám sửa thẳng vì phát hiện đúng 1 rủi ro thật: `ViewerViewModel.Show()` chặn theo
+  `_shownPath`, nên nếu chỉ thêm `_host.Clear()` mà không reset `_shownPath`, quay lại đúng trang đó (push CropPage
+  rồi back, không phải pop về hẳn) sẽ bị **trống ảnh vĩnh viễn** vì `PictureChanged` không bắn lại. Sửa đúng: reset
+  `_shownPath = null` trong `Detach()` cùng lúc với `Clear()` native bitmap trong `OnDisappearing()`.
+- Perf: `DocumentCleanup.DetectSkew` và `ContentAligner.BandAngle` đều có 1 hàm local `Score` cấp phát mới mảng
+  `bins` MỖI LẦN gọi trong vòng dò góc (~80-690 lần/trang tuỳ hàm) thay vì cấp phát 1 lần rồi `Array.Clear` --
+  Android dừng GC bridge phía Java 70ms tới hơn 1 giây mỗi lần thu gom object lớn (đã ghi nhận trong comment có sẵn
+  của `DocumentEdgeDetector.Scratch`), nên cấp phát lặp kiểu này đáng sửa dù không crash.
+- Vài thứ cố tình KHÔNG sửa vì không đủ bằng chứng là bug thật (đã điều tra, không phải bỏ qua): double-export
+  cùng lúc (caller app đã chặn bằng `IsExporting`), unlock enumeration trong `DocumentStore.List()` (tự lành nhờ
+  exception handling của `TryRead`), `ExportsViewModel.RefreshAsync` cùng dạng race nhưng thư mục export chỉ bị
+  sửa tuần tự theo hành động người dùng, không có pipeline nền tranh chấp.
+
+### Icon header "Mở PDF" lẫn với icon "Xuất PDF"; bỏ hỏi DPI mỗi lần xuất (đợt 2026-10-13)
+- `Views/Icons.cs` thêm hằng `OpenPdf` (glyph `file_open`, codepoint `0xeaf3`). Đoán sai 2 lần trước khi ra đúng:
+  lần 1 đoán nhầm `0xeb6c` (không có trong font đã đóng gói), lần 2 gõ nhầm `chr(0xe3f4)` (thực ra là icon
+  `image`/ảnh núi, không phải `insert_drive_file`) -- xác nhận sai bằng ảnh chụp màn hình thật. Sửa đúng bằng cách
+  đọc thẳng bảng cmap của file `Resources/Fonts/MaterialIcons-Regular.ttf` qua `fontTools` (Python, cài qua pip)
+  để biết chắc glyph nào THẬT SỰ có trong font đã đóng gói, rồi đối chiếu tên gọi chính thức qua file `codepoints`
+  trên GitHub `google/material-design-icons`. **Bài học: không đoán codepoint icon từ trí nhớ, luôn tra font thật.**
+- `HomePage.xaml`: nút header đổi từ `Icons.Pdf` (icon trang PDF đỏ, dùng cho PDF đã xuất) sang `Icons.OpenPdf`
+  (icon trang + mũi tên, dùng cho "Mở PDF có sẵn") -- 2 icon giờ phân biệt rõ, không còn lẫn.
+- Bỏ action sheet hỏi "Nhỏ/Vừa/Cao" mỗi lần bấm Xuất PDF (Settings đã có `pdf_quality` mặc định, hỏi lại mỗi lần
+  là thừa) -- xem thêm mục "Xuất PDF xong dialog thông báo" bên dưới, luồng xuất đã viết lại hoàn toàn trong đợt
+  này nên hành vi "không hỏi DPI" được gộp luôn vào thiết kế mới, không còn là sửa riêng lẻ.
+
+### Ads LevelPlay: `Init()` đôi khi treo im lặng, không gọi callback nào -- thêm retry/watchdog (đợt 2026-10-13)
+Owner báo ads lại không hiện (sau khi vụ race-condition Init/LoadAd ở đợt 2026-10-09 đã xác nhận xong). Bắt log
+trên máy thật: sau vài lần force-stop/mở lại liên tục để test, `LevelPlay.Init()` treo thật -- chờ hơn 45 giây,
+log không có cả `OnInitSuccess` LẪN `OnInitFailed`. Mọi `LoadAd()` xếp hàng chờ qua `RunAfterInit` (đợt trước) vì
+vậy cũng treo mãi theo, đúng như triệu chứng "ads đã hiện trước đó giờ không hiện lại".
+
+- **Sửa**: `UnityLevelPlayProvider.cs` thêm `StartInit()` tự gọi lại chính nó nếu không có callback nào trong một
+  khoảng chờ (backoff: 15s, 30s, 60s... tối đa 300s), dùng `_initAttempt` (Interlocked) để một watchdog cũ không
+  tự bắn lại nếu đã có attempt mới hơn đang chạy. `InitListener.OnInitFailed` cũng gọi lại `StartInit()` ngay
+  (tài liệu mẫu chính thức của Unity ghi "recommended to initialize again" trong `OnInitFailed`) thay vì bỏ cuộc.
+- Xác nhận trên máy thật: relaunch sạch (không force-stop liên tục) thì `Init()` chạy bình thường, không cần tới
+  retry; interstitial tải được, có doanh thu thật > 0; banner nhận "No fill" hợp lệ (errorCode 509, thị trường ads
+  thật sự không có gì trả về lúc đó, không phải lỗi code) và watchdog banner có sẵn từ trước (20s/lần) tiếp tục
+  tự thử lại đúng như thiết kế. Kết luận: lần treo 45s quan sát được nhiều khả năng là tác dụng phụ của việc
+  force-stop/relaunch dồn dập lúc test (không phải lỗi thường trực), nhưng retry/watchdog vẫn là một lớp bảo vệ
+  hợp lý để giữ lại (chi phí gần như bằng 0, không ảnh hưởng đường chạy bình thường).
+- Build xác nhận `DocScanner.AdsService.LevelPlay` + `DocScanner.csproj` 0 lỗi.
+- **Chưa làm cho PdfReader**: PdfReader hiện dùng AdMob làm provider chính (không phải LevelPlay) nên không cấp
+  bách bằng, nhưng nếu PdfReader cũng có `UnityLevelPlayProvider.cs` tương tự (chưa kiểm tra lại đợt này) thì nên
+  áp cùng fix cho nhất quán -- việc này owner chưa yêu cầu, chỉ ghi lại để nhớ.
+
+### Việc làm dở dang: luồng xuất PDF mới + menu 3 chấm ở dashboard + bỏ menu từng trang (đợt 2026-10-13, CHƯA kiểm tra xong trên máy)
+
+Owner yêu cầu đổi hẳn luồng xuất PDF và thêm menu 3 chấm cho mỗi tài liệu ở màn chính. Đã code xong, **build
+sạch**, đã xác nhận MỘT PHẦN trên máy thật (xem "Đã xác nhận" dưới đây), nhưng **mất kết nối adb (wireless
+debugging bị tắt, có thể do khoá màn hình) giữa chừng lúc đang kiểm tra**, nên phần còn lại owner cần tự bấm thử.
+
+**Luồng mới (yêu cầu gốc của owner):**
+Xuất PDF -> hỏi tên file (dialog bo góc + đổ bóng) -> xuất xong -> dialog kết quả thành công/thất bại (bo góc +
+đổ bóng; thành công có thêm nút Xem/Chia sẻ). Dashboard: mỗi tài liệu có nút 3 chấm mở menu Xem / Đổi tên / Xuất
+PDF / Chia sẻ (Chia sẻ = xuất PDF vào thư mục tạm rồi mở share sheet, xong thì xoá file tạm). Trong màn Xem (lưới
+trang), KHÔNG còn nút 3 chấm trên từng trang -- sắp xếp lại trang chỉ bằng cách nhấn giữ rồi kéo thả.
+
+**Code đã đổi:**
+- `Services/ExportCoordinator.cs`: viết lại hoàn toàn theo 3 trạng thái (`IsAskingName` / `IsExporting` /
+  `IsShowingResult`, gộp vào `ShowOverlay`). `ExportAsync` giờ chỉ mở dialog hỏi tên (không xuất ngay); xác nhận
+  tên mới thật sự chạy xuất (`RunExportAsync` -> `RunCoreAsync` dùng chung cho cả xuất thường lẫn `ShareDocumentAsync`
+  mới thêm). Xuất xong luôn gọi `ShowResult(...)` thay vì Toast cũ. `ShareDocumentAsync(docId)` xuất ra
+  `FileSystem.CacheDirectory/share_<guid>.pdf`, gọi `Share.Default.RequestAsync`, xoá file tạm trong `finally`.
+- `Core/Export/ExportLibrary.cs`: thêm `PathForName(name)` (như `NewPath` cũ nhưng dùng đúng tên owner gõ, không
+  gắn thêm mốc giờ, vẫn tự thêm " (2)"... nếu trùng tên).
+- `Views/ExportOverlay.xaml`: viết lại thành 3 khối trong 1 `Grid` (hỏi tên / đang xuất / kết quả), khối hỏi tên
+  và khối kết quả đều là `Border` bo góc (CornerRadius 20) + `Shadow` (Opacity 0.35, Radius 18).
+- `ViewModels/HomeViewModel.cs`: `DocumentMenuAsync` thêm 2 lựa chọn "Xem" và "Chia sẻ" vào menu 3 chấm có sẵn
+  (menu cũ đã có Đổi tên/Xuất PDF/Chọn nhiều/thư mục/Xoá từ trước).
+- `Views/HomePage.xaml`: nút 3 chấm của mỗi dòng tài liệu đổi cấu trúc 2 LẦN mới ra bản đúng -- xem mục riêng
+  "SwipeView nuốt tap của phần tử con" ngay dưới đây, vì đây là một phát hiện platform-level đáng nhớ riêng,
+  không chỉ là chi tiết của feature này.
+- `ViewModels/DocumentViewModel.cs` + `ViewModels/Items.cs` (`PageItem`): bỏ hẳn `ShowPageMenu`/`MenuCommand` của
+  từng trang. Kéo-thả (`DragStartingCommand`/`DropCommand`, logic `MovePage`/`DropOn` giữ nguyên không đổi) giờ là
+  cách DUY NHẤT để đổi thứ tự trang.
+- `Views/DocumentPage.xaml`: mỗi ô trang bọc trong `SwipeView` (vuốt = Xoá, theo đúng mẫu `SwipeItem` của
+  `HomePage`), bỏ hẳn khối Border 3 chấm 26x26 ở góc trên-phải từng ô.
+
+**SwipeView nuốt tap của phần tử con lồng bên trong (phát hiện platform MAUI Android, không phải bug logic):**
+Lần đầu thêm nút 3 chấm làm cột thứ 5 NẰM TRONG Grid nội dung của `SwipeView` (dòng tài liệu ở HomePage vốn đã bọc
+trong `SwipeView` để vuốt-xoá) -- toạ độ đúng (kiểm bằng `uiautomator dump`), nhưng tap không có phản ứng gì.
+Test loại trừ: tap vào chỗ khác trong CÙNG dòng (vùng `OpenCommand` gốc, cũng nằm trong SwipeView) vẫn ăn bình
+thường -- vậy SwipeView tự nó bắt gesture tốt, chỉ riêng một `TapGestureRecognizer` MỚI gắn thêm vào phần tử con
+lồng bên trong mới bị nuốt mất, không hit-test tới. Thử cách 2: đưa nút 3 chấm ra làm sibling cùng cấp Z-order
+(đè lên trên) với `BoxView` trong suốt làm chỗ chừa trong Grid gốc -- tap chạy được, nhưng để lại một ô xám thừa
+hiển thị mãi (kể cả sau khi đóng menu). Cách đúng cuối cùng: bọc `SwipeView` và nút 3 chấm làm 2 CỘT riêng của
+MỘT Grid ngoài cùng (`ColumnDefinitions="*,46"`), tức là 2 anh em thật sự theo cấu trúc cây, không phải 1 cái lồng
+trong cái kia và cũng không phải đè Z-order -- hết cả 2 vấn đề (xác nhận bằng ảnh chụp không còn ô xám).
+**Bài học: trên Android, đừng gắn `TapGestureRecognizer` cho một phần tử lồng BÊN TRONG nội dung của `SwipeView`
+-- tách nó ra làm cột/anh em riêng của `SwipeView`, đừng lồng và đừng chỉ đè Z-order (đè Z-order để lại vệt render
+thừa).**
+
+**Đã xác nhận trên máy thật (trước khi mất kết nối adb):**
+- Nút 3 chấm mở đúng menu đủ 9 mục: Xem / Đổi tên / Xuất PDF / Chia sẻ / Chọn nhiều / Tạo thư mục mới và chuyển
+  vào / Chuyển vào thư mục... / Xoá / Huỷ (ảnh `menu_check3.png`).
+- Dòng tài liệu không còn ô xám thừa sau khi sửa cấu trúc Grid (ảnh `row_fixed.png`).
+
+**CHƯA xác nhận trên máy (owner tự bấm thử khi rảnh, mất adb giữa chừng nên dừng ở đây):**
+- Bấm "Xuất PDF" từ menu 3 chấm -> dialog hỏi tên có hiện đúng, bo góc + đổ bóng không.
+- Xuất xong -> dialog kết quả có hiện đúng không (cả 2 nhánh: thành công có nút Xem/Chia sẻ, thất bại chỉ có Đóng).
+- Bấm "Chia sẻ" từ menu 3 chấm -> share sheet có mở đúng, file tạm trong cache có bị xoá sau khi chia sẻ xong không
+  (nên kiểm bằng `adb shell run-as btk.docscanner ls cache` sau khi thao tác xong, phải KHÔNG còn `share_*.pdf`).
+- Mở một tài liệu (Xem) -> lưới trang không còn nút 3 chấm nào, nhấn giữ + kéo thả vẫn đổi thứ tự đúng, vuốt một
+  trang vẫn xoá đúng (logic kéo-thả không đổi nhưng chưa bấm thử LẠI sau khi bỏ menu, đề phòng đụng tay nhầm).
+- `CLAUDE.md` mục này sẽ cập nhật tiếp khi có xác nhận; nếu owner thấy sai chỗ nào, chụp màn hình + mô tả thao
+  tác giống các lần trước để dễ tra log.

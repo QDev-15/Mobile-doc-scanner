@@ -40,15 +40,27 @@ public partial class SettingsViewModel(DocumentStore store, ExportLibrary export
 	/// <summary>Space used on the phone by the documents (originals, renders) and the exported PDFs.</summary>
 	public async Task LoadStorageAsync()
 	{
-		(long docs, int count, long pdfs, int pdfCount) = await Task.Run(() =>
+		// The recursive enumeration below walks every page folder while the background pipeline (PageIngestQueue,
+		// trash cleanup) may be replacing or deleting those same files -- a page's old render file can disappear
+		// between being listed and its length being read. Settings is reachable at any time (menu icon on the main
+		// screen), so this is a real race, not a theoretical one; this is only a storage summary, so on a transient
+		// I/O failure it is skipped rather than crashing the whole app (OnAppearing awaits this as async void).
+		try
 		{
-			long Size(string dir) => Directory.Exists(dir)
-				? new DirectoryInfo(dir).EnumerateFiles("*", SearchOption.AllDirectories).Sum(f => f.Length) : 0;
-			IReadOnlyList<ExportedFile> exported = exportsLibrary.List();
-			return (Size(store.Root), store.List().Count, exported.Sum(f => f.Bytes), exported.Count);
-		});
-		StorageText = $"{count} tài liệu · {ExportsViewModel.Size(docs)}\n"
-			+ (pdfCount == 0 ? "Chưa có PDF đã xuất" : $"{pdfCount} PDF đã xuất · {ExportsViewModel.Size(pdfs)}");
+			(long docs, int count, long pdfs, int pdfCount) = await Task.Run(() =>
+			{
+				long Size(string dir) => Directory.Exists(dir)
+					? new DirectoryInfo(dir).EnumerateFiles("*", SearchOption.AllDirectories).Sum(f => f.Length) : 0;
+				IReadOnlyList<ExportedFile> exported = exportsLibrary.List();
+				return (Size(store.Root), store.List().Count, exported.Sum(f => f.Bytes), exported.Count);
+			});
+			StorageText = $"{count} tài liệu · {ExportsViewModel.Size(docs)}\n"
+				+ (pdfCount == 0 ? "Chưa có PDF đã xuất" : $"{pdfCount} PDF đã xuất · {ExportsViewModel.Size(pdfs)}");
+		}
+		catch (IOException)
+		{
+			StorageText = "";
+		}
 	}
 
 	[RelayCommand]

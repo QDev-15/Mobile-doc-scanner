@@ -122,24 +122,31 @@
             </Label>
         </Grid>
 
-        <!-- Pages: 3 per row. Tap = edit; long-press and drag onto another page = move it there; ⋮ = page menu. -->
+        <!-- Pages: 3 per row. Tap = edit; long-press and drag onto another page = move it there (the only way to
+             reorder: no per-page ⋮ menu anymore, owner's request 2026-10-13); swipe = delete. -->
         <CollectionView Grid.Row="2" ItemsSource="{Binding Pages}" Margin="8,8,8,0">
             <CollectionView.ItemsLayout>
                 <GridItemsLayout Orientation="Vertical" Span="3" HorizontalItemSpacing="8" VerticalItemSpacing="8" />
             </CollectionView.ItemsLayout>
             <CollectionView.ItemTemplate>
                 <DataTemplate x:DataType="vm:PageItem">
-                    <Border StrokeThickness="1" Padding="0"
-                            Stroke="{AppThemeBinding Light={StaticResource Divider}, Dark={StaticResource DividerDark}}"
-                            BackgroundColor="{AppThemeBinding Light={StaticResource CardBackground}, Dark={StaticResource CardBackgroundDark}}">
-                        <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="10" />
-                        </Border.StrokeShape>
-                        <Border.GestureRecognizers>
-                            <DragGestureRecognizer CanDrag="True" DragStartingCommand="{Binding DragStartingCommand}" />
-                            <DropGestureRecognizer AllowDrop="True" DropCommand="{Binding DropCommand}" />
-                        </Border.GestureRecognizers>
-                        <Grid HeightRequest="156">
+                    <SwipeView>
+                        <SwipeView.RightItems>
+                            <SwipeItems>
+                                <SwipeItem Text="Xoá" BackgroundColor="#D32F2F" Command="{Binding DeleteCommand}" />
+                            </SwipeItems>
+                        </SwipeView.RightItems>
+                        <Border StrokeThickness="1" Padding="0"
+                                Stroke="{AppThemeBinding Light={StaticResource Divider}, Dark={StaticResource DividerDark}}"
+                                BackgroundColor="{AppThemeBinding Light={StaticResource CardBackground}, Dark={StaticResource CardBackgroundDark}}">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="10" />
+                            </Border.StrokeShape>
+                            <Border.GestureRecognizers>
+                                <DragGestureRecognizer CanDrag="True" DragStartingCommand="{Binding DragStartingCommand}" />
+                                <DropGestureRecognizer AllowDrop="True" DropCommand="{Binding DropCommand}" />
+                            </Border.GestureRecognizers>
+                            <Grid HeightRequest="156">
                             <Image Source="{Binding Thumb}" IsVisible="{Binding ShowThumb}" Aspect="AspectFit" Margin="4">
                                 <Image.GestureRecognizers>
                                     <TapGestureRecognizer Command="{Binding OpenCommand}" />
@@ -183,20 +190,9 @@
                                 <Label Text="{Binding NumberText}" FontSize="11" TextColor="White" />
                             </Border>
 
-                            <!-- Page menu -->
-                            <Border HorizontalOptions="End" VerticalOptions="Start" Margin="0,4,4,0" Padding="0"
-                                    WidthRequest="26" HeightRequest="26" StrokeThickness="0" BackgroundColor="#73000000">
-                                <Border.StrokeShape>
-                                    <RoundRectangle CornerRadius="13" />
-                                </Border.StrokeShape>
-                                <Border.GestureRecognizers>
-                                    <TapGestureRecognizer Command="{Binding MenuCommand}" />
-                                </Border.GestureRecognizers>
-                                <Label Text="{x:Static views:Icons.More}" FontFamily="Icons" FontSize="18" TextColor="White"
-                                       HorizontalTextAlignment="Center" VerticalTextAlignment="Center" />
-                            </Border>
-                        </Grid>
-                    </Border>
+                            </Grid>
+                        </Border>
+                    </SwipeView>
                 </DataTemplate>
             </CollectionView.ItemTemplate>
         </CollectionView>

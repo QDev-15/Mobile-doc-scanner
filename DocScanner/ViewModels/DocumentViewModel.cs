@@ -144,8 +144,8 @@ public partial class DocumentViewModel(DocumentStore store, ImportCoordinator im
 	}
 
 	private PageItem NewItem(PageRecord p, int number) =>
-		new(p, number, ThumbFor, OpenPage, DeletePage, ShowPageMenu, x => _dragged = x, DropOn,
-			imports.CopyProgress, queue.IsPreparing);
+		new(p, number, ThumbFor, OpenPage, DeletePage, dragStart: x => _dragged = x, drop: DropOn,
+			copyProgress: imports.CopyProgress, preparing: queue.IsPreparing);
 
 	/// <summary>Rebuilds the tiles from the document (after a reorder or a deletion).</summary>
 	public void Reload()
@@ -324,24 +324,6 @@ public partial class DocumentViewModel(DocumentStore store, ImportCoordinator im
 		if (dragged == null || dragged == target) return;
 		int to = Pages.IndexOf(target);
 		if (to >= 0) MovePage(dragged, to);
-	}
-
-	private async void ShowPageMenu(PageItem item)
-	{
-		int index = Pages.IndexOf(item), last = Pages.Count - 1;
-		var actions = new List<string> { "Mở / chỉnh khung" };
-		if (index > 0) actions.AddRange(["Đưa lên đầu", "Lên trước 1 trang"]);
-		if (index < last) actions.AddRange(["Ra sau 1 trang", "Đưa xuống cuối"]);
-		string? choice = await Shell.Current.DisplayActionSheetAsync(item.Label, "Đóng", "Xoá trang", [.. actions]);
-		switch (choice)
-		{
-			case "Mở / chỉnh khung": OpenPage(item); break;
-			case "Đưa lên đầu": MovePage(item, 0); break;
-			case "Lên trước 1 trang": MovePage(item, index - 1); break;
-			case "Ra sau 1 trang": MovePage(item, index + 1); break;
-			case "Đưa xuống cuối": MovePage(item, last); break;
-			case "Xoá trang": DeletePage(item); break;
-		}
 	}
 
 	private void SetUndo(string text, Func<bool> undo)

@@ -113,8 +113,11 @@ public partial class PageItem : ObservableObject
 	/// current one, otherwise the plain thumbnail).</param>
 	/// <param name="copyProgress">Share of the page's photo copied so far, while it is being imported.</param>
 	/// <param name="preparing">True while the page still has background work before it can be edited.</param>
+	/// <summary>Reordering is direct drag (DragStartingCommand/DropCommand) and delete is a swipe action
+	/// (DeleteCommand) -- no per-page ⋮ menu anymore (owner's request, 2026-10-13: remove it, select-and-drag is
+	/// the one way to reorder).</summary>
 	public PageItem(PageRecord record, int number, Func<PageRecord, string> thumbPath, Action<PageItem> open, Action<PageItem> delete,
-		Action<PageItem>? menu = null, Action<PageItem>? dragStart = null, Action<PageItem>? drop = null,
+		Action<PageItem>? dragStart = null, Action<PageItem>? drop = null,
 		Func<string, double?>? copyProgress = null, Func<string, bool>? preparing = null)
 	{
 		Record = record;
@@ -124,7 +127,6 @@ public partial class PageItem : ObservableObject
 		SetNumber(number);
 		OpenCommand = new Command(() => open(this));
 		DeleteCommand = new Command(() => delete(this));
-		MenuCommand = new Command(() => menu?.Invoke(this));
 		DragStartingCommand = new Command(() => dragStart?.Invoke(this));
 		DropCommand = new Command(() => drop?.Invoke(this));
 		Refresh();
@@ -146,8 +148,6 @@ public partial class PageItem : ObservableObject
 	}
 	public ICommand OpenCommand { get; }
 	public ICommand DeleteCommand { get; }
-	/// <summary>Page actions (move, delete...).</summary>
-	public ICommand MenuCommand { get; }
 	/// <summary>Drag to reorder: this tile is picked up / another tile is dropped on it.</summary>
 	public ICommand DragStartingCommand { get; }
 	public ICommand DropCommand { get; }

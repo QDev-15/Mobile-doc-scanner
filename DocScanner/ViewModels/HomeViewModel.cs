@@ -20,6 +20,7 @@ public partial class HomeViewModel(DocumentStore store, ImportCoordinator import
 	private static bool _resumed;
 	private string? _folderId;
 	private DocumentItem? _dragged;
+	private CancellationTokenSource? _searchDebounce;
 
 	public ObservableCollection<HomeItem> Items { get; } = [];
 
@@ -99,13 +100,47 @@ public partial class HomeViewModel(DocumentStore store, ImportCoordinator import
 	private string CoverThumb(string docId, PageRecord p) =>
 		p.CroppedRevision > 0 && !p.NeedsRender ? store.CroppedThumbPath(docId, p.Id, p.CroppedRevision) : store.ThumbPath(docId, p);
 
-	partial void OnSearchTextChanged(string value) => _ = RefreshAsync();
+	/// <summary>Debounced: RefreshAsync re-lists every document (plus one store.Pages()/imports.Status() call per
+	/// visible item), visibly janky on every keystroke with a few hundred documents if run unconditionally.</summary>
+	partial void OnSearchTextChanged(string value)
+	{
+		_searchDebounce?.Cancel();
+		if (value.Length == 0)
+		{
+			// Clearing the box -- whether by ToggleSearch() closing the search bar, or backspacing it empty --
+			// is a discrete action users expect to take effect at once, not after the keystroke debounce.
+			_ = RefreshAsync();
+			return;
+		}
+		var cts = _searchDebounce = new CancellationTokenSource();
+		_ = DebouncedRefreshAsync(cts.Token);
+	}
+
+	private async Task DebouncedRefreshAsync(CancellationToken token)
+	{
+		try { await Task.Delay(300, token); }
+		catch (OperationCanceledException) { return; }
+		if (!token.IsCancellationRequested) await RefreshAsync();
+	}
 
 	[RelayCommand]
 	public async Task RefreshAsync()
 	{
-		IReadOnlyList<DocumentRecord> docs = await Task.Run(store.List);
-		IReadOnlyList<FolderRecord> folders = store.Folders();
+		IReadOnlyList<DocumentRecord> docs;
+		IReadOnlyList<FolderRecord> folders;
+		try
+		{
+			// store.List()/Folders() walk the document store's folders on disk, which the background import/render
+			// pipeline (PageIngestQueue) is free to mutate (replacing/deleting page files) at any moment, independent
+			// of which screen is open. HomePage.OnAppearing() calls this and is async void: an unhandled exception
+			// here would crash the whole app (same race already found and fixed in SettingsViewModel.LoadStorageAsync
+			// and SignaturePage.OnAppearing -- this is the same pattern on the app's own home screen, its highest-
+			// traffic one). A transient miss just skips this refresh; the next one (navigation, pipeline completion,
+			// pull-to-refresh) succeeds normally.
+			docs = await Task.Run(store.List);
+			folders = store.Folders();
+		}
+		catch (IOException) { return; }
 		Perf.Log($"startup: {docs.Count} documents listed");
 
 		FolderRecord? current = _folderId == null ? null : folders.FirstOrDefault(f => f.Id == _folderId);
@@ -233,13 +268,16 @@ public partial class HomeViewModel(DocumentStore store, ImportCoordinator import
 	/// <summary>The row's ⋮ menu: the everyday actions without opening the document.</summary>
 	private async Task DocumentMenuAsync(DocumentItem item)
 	{
-		const string rename = "Đổi tên", export = "Xuất PDF", select = "Chọn nhiều", newFolder = "Tạo thư mục mới và chuyển vào",
-			move = "Chuyển vào thư mục...", moveOut = "Chuyển ra ngoài thư mục", delete = "Xoá";
-		var actions = new List<string> { rename, export, select, newFolder, move };
+		const string view = "Xem", rename = "Đổi tên", export = "Xuất PDF", share = "Chia sẻ", select = "Chọn nhiều",
+			newFolder = "Tạo thư mục mới và chuyển vào", move = "Chuyển vào thư mục...", moveOut = "Chuyển ra ngoài thư mục", delete = "Xoá";
+		var actions = new List<string> { view, rename, export, share, select, newFolder, move };
 		if (item.Record.FolderId != null) actions.Add(moveOut);
 		string? choice = await Shell.Current.DisplayActionSheetAsync(item.Name, "Huỷ", delete, [.. actions]);
 		switch (choice)
 		{
+			case view:
+				OpenDocument(item);
+				break;
 			case rename:
 				string? name = await Shell.Current.DisplayPromptAsync("Đổi tên tài liệu", "Tên mới:", "Lưu", "Huỷ",
 					initialValue: item.Name, maxLength: 120, keyboard: Keyboard.Text);
@@ -247,6 +285,9 @@ public partial class HomeViewModel(DocumentStore store, ImportCoordinator import
 				break;
 			case export:
 				await exports.ExportAsync(item.Record.Id);
+				break;
+			case share:
+				await exports.ShareDocumentAsync(item.Record.Id);
 				break;
 			case select:
 				BeginSelection(item);

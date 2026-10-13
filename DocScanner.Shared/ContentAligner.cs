@@ -131,10 +131,16 @@ public static class ContentAligner
         int span = maxY - minY + (int)(width * Math.Tan(MaxAngle * Math.PI / 180)) + 4;
         int offset = -minY + span / 2 - (maxY - minY) / 2;
 
+        // Hoisted out of Score (called ~86 times per band: 65 coarse-search steps + 21 fine-search steps, and
+        // BandAngle itself runs 8 times per page -- 4 bands x {rows, columns}) instead of allocated fresh each
+        // call -- span is fixed for the whole BandAngle call. Same reasoning as DocumentCleanup.DetectSkew's
+        // identical Score pattern: Android pauses the Java-bridge GC on large-object collection, so per-page
+        // allocation churn is worth avoiding.
+        var bins = new int[span + 2];
         double Score(double deg)
         {
             double t = Math.Tan(deg * Math.PI / 180);
-            var bins = new int[span + 2];
+            Array.Clear(bins);
             for (int i = 0; i < xs.Count; i += step)
             {
                 int r = (int)Math.Round(ys[i] - t * (xs[i] - cx)) + offset;

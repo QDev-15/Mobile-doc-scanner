@@ -32,6 +32,9 @@ public partial class ResultPage : ContentPage
 	protected override void OnAppearing()
 	{
 		base.OnAppearing();
+#if ANDROID
+		_disposed = false;
+#endif
 		_viewModel.Attach();
 	}
 
@@ -39,10 +42,14 @@ public partial class ResultPage : ContentPage
 	{
 		base.OnDisappearing();
 		_viewModel.Detach();
+#if ANDROID
+		DisposeBitmaps();
+#endif
 	}
 
 #if ANDROID
 	private int _frameNumber;
+	private bool _disposed; // true from DisposeBitmaps() until the next OnAppearing re-attaches
 	private Bitmap? _shown;
 	private Bitmap? _pendingBitmap;
 	private bool _hasPendingBitmap;
@@ -93,10 +100,39 @@ public partial class ResultPage : ContentPage
 				if (t.IsFaulted) return;
 				MainThread.BeginInvokeOnMainThread(() =>
 				{
+					// The view model's own render loop (RunLookAsync) is not cancelled by Detach() and can still
+					// invoke PreviewChanged after OnDisappearing -> DisposeBitmaps() already ran: without this check
+					// the stale bitmap would be reattached (Show) or pooled back into _spare (GiveBack), undoing the
+					// native-OOM fix DisposeBitmaps exists for. Dispose it outright instead once the page is torn down.
+					if (_disposed) { t.Result.Dispose(); return; }
 					if (number == _frameNumber) Show(t.Result);
 					else GiveBack(t.Result);
 				});
 			});
+	}
+
+	/// <summary>Releases every native-backed Bitmap this page holds (each ~9 MB uncompressed): without this, revisiting
+	/// ResultPage across a session accumulates them faster than the .NET GC (which doesn't see the Java-heap cost at
+	/// all) would ever reclaim them, risking a native OOM well before any .NET memory pressure triggers a collection.
+	/// Clears each ImageView's own reference first (same ordering OnPreviewChanged/Show already rely on elsewhere in
+	/// this file): a system-triggered redraw landing in the gap between OnDisappearing and the next OnAppearing's
+	/// fresh Attach()/Refresh() must never hit a disposed bitmap still attached to a view.</summary>
+	private void DisposeBitmaps()
+	{
+		_disposed = true; // see the ContinueWith callbacks in OnPreviewChanged / OnFilterThumbsChanged
+		NativeView?.SetImageBitmap(null);
+		_shown?.Dispose(); _shown = null;
+		_pendingBitmap?.Dispose(); _pendingBitmap = null;
+		_hasPendingBitmap = false;
+		_heldDuringTurn?.Dispose(); _heldDuringTurn = null;
+		lock (_spareLock)
+		{
+			foreach (Bitmap b in _spare) b.Dispose();
+			_spare.Clear();
+		}
+		foreach (Image thumb in new[] { ThumbColor, ThumbGray, ThumbBlackWhite })
+			if (thumb.Handler?.PlatformView is Android.Widget.ImageView view) view.SetImageBitmap(null);
+		for (int i = 0; i < _thumbs.Length; i++) { _thumbs[i]?.Dispose(); _thumbs[i] = null; }
 	}
 
 	private Bitmap Rent(int w, int h)
@@ -226,8 +262,8 @@ public partial class ResultPage : ContentPage
 				if (t.IsFaulted) return;
 				MainThread.BeginInvokeOnMainThread(() =>
 				{
-					if (number == _thumbsNumber) SetThumbs(t.Result);
-					else foreach (Bitmap? b in t.Result) b?.Dispose();
+					if (_disposed || number != _thumbsNumber) foreach (Bitmap? b in t.Result) b?.Dispose();
+					else SetThumbs(t.Result);
 				});
 			});
 	}

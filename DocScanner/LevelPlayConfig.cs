@@ -1,7 +1,7 @@
 namespace DocScanner;
 
 /// <summary>
-/// Unity LevelPlay credentials -- the equivalent of <see cref="AdsConfig"/> for AdMob, much simpler because
+/// Unity LevelPlay credentials -- the equivalent of the old, now-deleted AdsConfig for AdMob, much simpler because
 /// LevelPlay has no separate "test ad unit ID" concept: the same App Key / Ad Unit IDs below serve test
 /// creatives automatically on devices registered as a test device in the LevelPlay dashboard (Settings >
 /// Testing), and real ads everywhere else. There is nothing here that can accidentally ship a placeholder ID
@@ -23,8 +23,8 @@ public static class LevelPlayConfig
 #endif
 
     /// <summary>Turns on LevelPlay's own adapter debug logging (<c>LevelPlay.SetAdaptersDebug</c>). Debug builds
-    /// only, same split as <see cref="AdsConfig.UseTestAds"/> -- does not affect which ad unit IDs are used,
-    /// only how chatty the SDK's own logcat output is.</summary>
+    /// only, same Debug/Release split the old AdMob-era AdsConfig.UseTestAds used -- does not affect which ad
+    /// unit IDs are used, only how chatty the SDK's own logcat output is.</summary>
 #if DEBUG
     public const bool TestMode = true;
 #else

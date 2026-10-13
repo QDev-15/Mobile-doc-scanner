@@ -16,6 +16,8 @@ namespace DocScanner.AdsService.Internal;
 internal sealed class AdMobProvider(AdMobOptions options, IInterstitialAdService interstitial) : IAdProvider
 {
     private AdView? _shared;
+    private bool _suspended; // set by SetSuspended: the app turned ads off mid-session (e.g. a Pro purchase)
+    private bool _consentSubscribed; // LoadWhenConsented's OnConsentInfoUpdated/OnConsentFormDismissed, at most once ever
 
     public bool IsBannerLoaded { get; private set; }
 
@@ -47,12 +49,19 @@ internal sealed class AdMobProvider(AdMobOptions options, IInterstitialAdService
     /// <summary>Never requests before the UMP consent flow says ads may be requested (in EEA/UK the form is
     /// still on screen at startup and a request sent now would be dropped, leaving the banner blank until the
     /// next refresh). Otherwise loads once right away; if not yet allowed, loads the first time consent info /
-    /// the form settles into "can request".</summary>
-    private static void LoadWhenConsented(AdView view)
+    /// the form settles into "can request". <see cref="_suspended"/> is re-checked at the moment the consent
+    /// flow actually allows the request (not just when this method is called): otherwise a Pro purchase made
+    /// while the consent dialog is still up would suspend the (still consent-blocked) banner, and the request
+    /// would still go out later once the user dismisses that dialog. The subscription itself is only ever set up
+    /// once per instance (<see cref="_consentSubscribed"/>): SetSuspended(false) calls this again on every
+    /// resume, and re-subscribing every time would stack a new, never-removed handler pair each time.</summary>
+    private void LoadWhenConsented(AdView view)
     {
         IAdConsentService? consent = IPlatformApplication.Current?.Services.GetService<IAdConsentService>();
-        void Load() => view.LoadAd(new AdRequest.Builder().Build());
+        void Load() { if (!_suspended) view.LoadAd(new AdRequest.Builder().Build()); }
         if (consent is null || consent.CanRequestAds()) { Load(); return; }
+        if (_consentSubscribed) return;
+        _consentSubscribed = true;
 
         bool loaded = false;
         void TryLoad()
@@ -63,6 +72,28 @@ internal sealed class AdMobProvider(AdMobOptions options, IInterstitialAdService
         }
         consent.OnConsentInfoUpdated += (_, _) => TryLoad();
         consent.OnConsentFormDismissed += (_, _) => TryLoad();
+    }
+
+    /// <summary>Pro bought mid-session: stop the banner refreshing and retrying, hide it; resume on false. (A Pro
+    /// user at startup never reaches here: the provider is never even created for them, see AdsClient.)</summary>
+    public void SetSuspended(bool suspended)
+    {
+        _suspended = suspended;
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (_shared is not { } view) return;
+            view.Visibility = suspended ? Android.Views.ViewStates.Gone : Android.Views.ViewStates.Visible;
+            if (suspended)
+            {
+                view.Pause();
+                SetLoaded(false);
+            }
+            else
+            {
+                view.Resume();
+                LoadWhenConsented(view);
+            }
+        });
     }
 
     public bool IsInterstitialReady => interstitial.IsAdLoaded;

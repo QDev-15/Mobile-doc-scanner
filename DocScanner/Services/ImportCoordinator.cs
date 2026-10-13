@@ -61,6 +61,8 @@ public sealed class ImportCoordinator(BackgroundImporter importer, IPhotoPicker 
 
 	public async Task<DocumentRecord?> FromCameraAsync(Func<DocumentRecord> document)
 	{
+		if (_picking) return null; // a second tap before the UI disables the camera button
+		_picking = true;
 		try
 		{
 			return await CaptureIntoAsync(document);
@@ -70,6 +72,10 @@ public sealed class ImportCoordinator(BackgroundImporter importer, IPhotoPicker 
 			// A camera problem must never take the app down (it did: MAUI's capture threw on Android 12).
 			await ReportAsync("Không chụp được ảnh", ex);
 			return null;
+		}
+		finally
+		{
+			_picking = false;
 		}
 	}
 

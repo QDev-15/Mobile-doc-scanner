@@ -50,7 +50,15 @@ public partial class ViewerViewModel(DocumentStore store, PageIngestQueue queue,
 		Refresh();
 	}
 
-	public void Detach() => queue.PageUpdated -= OnPageUpdated;
+	/// <summary>Pairs with <see cref="ViewerPage"/> freeing the native bitmap on the way out: resets
+	/// <c>_shownPath</c> too, so returning to the very same page (e.g. pushed Crop then back, not a final pop)
+	/// still re-raises <see cref="PictureChanged"/> in <see cref="Refresh"/> instead of <see cref="Show"/> treating
+	/// the unchanged path as nothing to do and leaving the picture blank.</summary>
+	public void Detach()
+	{
+		queue.PageUpdated -= OnPageUpdated;
+		_shownPath = null;
+	}
 
 	private void OnPageUpdated(PageUpdate update)
 	{

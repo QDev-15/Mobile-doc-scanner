@@ -5,13 +5,71 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:services="clr-namespace:DocScanner.Services"
     x:DataType="services:ExportCoordinator"
-    IsVisible="{Binding IsExporting}"
+    IsVisible="{Binding ShowOverlay}"
     BackgroundColor="#B3000000">
 
-    <!-- Full-screen scrim while a PDF is being exported (any screen that has the "Xuất PDF" button). -->
-    <VerticalStackLayout VerticalOptions="Center" HorizontalOptions="Center" Spacing="16">
-        <ActivityIndicator IsRunning="{Binding IsExporting}" Color="White" WidthRequest="48" HeightRequest="48" />
-        <Label Text="{Binding ExportText}" TextColor="White" FontSize="16" HorizontalTextAlignment="Center" />
-        <Button Text="Huỷ" Command="{Binding CancelCommand}" />
-    </VerticalStackLayout>
+    <!-- Full-screen scrim on every screen "Xuất PDF" can be called from. One shared rounded-corner + shadow dialog
+         shell (owner's request, 2026-10-13) carries all three states of the flow: asking for a name, showing
+         progress, and the result (success with Xem/Chia sẻ, or a failure message); exactly one of IsAskingName /
+         IsExporting / IsShowingResult is ever true at a time (ShowOverlay, the scrim's own visibility, is the OR
+         of the three). Same Border + RoundRectangle + Shadow pattern HomePage's own cards already use, so these
+         dialogs match the rest of the app instead of a plain system alert/action sheet. -->
+    <Grid>
+
+        <!-- 1) Ask for a name -->
+        <Border IsVisible="{Binding IsAskingName}" HorizontalOptions="Center" VerticalOptions="Center" WidthRequest="300"
+                Padding="20,18" StrokeThickness="0"
+                BackgroundColor="{AppThemeBinding Light={StaticResource CardBackground}, Dark={StaticResource CardBackgroundDark}}">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="20" />
+            </Border.StrokeShape>
+            <Border.Shadow>
+                <Shadow Brush="Black" Opacity="0.35" Radius="18" Offset="0,8" />
+            </Border.Shadow>
+            <VerticalStackLayout Spacing="14">
+                <Label Text="Xuất PDF" FontSize="17" FontFamily="OpenSansSemibold"
+                       TextColor="{AppThemeBinding Light={StaticResource OnSurface}, Dark={StaticResource OnSurfaceDark}}" />
+                <Entry Text="{Binding PdfNameInput}" Placeholder="Tên file PDF" ReturnCommand="{Binding ConfirmNameCommand}"
+                       TextColor="{AppThemeBinding Light={StaticResource OnSurface}, Dark={StaticResource OnSurfaceDark}}" />
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                    <Button Text="Huỷ" Command="{Binding CancelNameCommand}" BackgroundColor="Transparent"
+                            TextColor="{AppThemeBinding Light={StaticResource Muted}, Dark={StaticResource MutedDark}}" />
+                    <Button Grid.Column="1" Text="Xuất" Command="{Binding ConfirmNameCommand}"
+                            BackgroundColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" TextColor="White" />
+                </Grid>
+            </VerticalStackLayout>
+        </Border>
+
+        <!-- 2) Progress -->
+        <VerticalStackLayout IsVisible="{Binding IsExporting}" VerticalOptions="Center" HorizontalOptions="Center" Spacing="16">
+            <ActivityIndicator IsRunning="{Binding IsExporting}" Color="White" WidthRequest="48" HeightRequest="48" />
+            <Label Text="{Binding ExportText}" TextColor="White" FontSize="16" HorizontalTextAlignment="Center" />
+            <Button Text="Huỷ" Command="{Binding CancelCommand}" />
+        </VerticalStackLayout>
+
+        <!-- 3) Result: success (Xem / Chia sẻ alongside Đóng) or failure (just Đóng and the message). -->
+        <Border IsVisible="{Binding IsShowingResult}" HorizontalOptions="Center" VerticalOptions="Center" WidthRequest="300"
+                Padding="20,18" StrokeThickness="0"
+                BackgroundColor="{AppThemeBinding Light={StaticResource CardBackground}, Dark={StaticResource CardBackgroundDark}}">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="20" />
+            </Border.StrokeShape>
+            <Border.Shadow>
+                <Shadow Brush="Black" Opacity="0.35" Radius="18" Offset="0,8" />
+            </Border.Shadow>
+            <VerticalStackLayout Spacing="14">
+                <Label Text="{Binding ResultTitle}" FontSize="17" FontFamily="OpenSansSemibold"
+                       TextColor="{AppThemeBinding Light={StaticResource OnSurface}, Dark={StaticResource OnSurfaceDark}}" />
+                <Label Text="{Binding ResultMessage}" FontSize="13"
+                       TextColor="{AppThemeBinding Light={StaticResource Muted}, Dark={StaticResource MutedDark}}" />
+                <HorizontalStackLayout Spacing="8" HorizontalOptions="End">
+                    <Button Text="Xem" Command="{Binding ViewResultCommand}" IsVisible="{Binding ResultSuccess}" />
+                    <Button Text="Chia sẻ" Command="{Binding ShareResultCommand}" IsVisible="{Binding ResultSuccess}"
+                            BackgroundColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" TextColor="White" />
+                    <Button Text="Đóng" Command="{Binding DismissResultCommand}" BackgroundColor="Transparent"
+                            TextColor="{AppThemeBinding Light={StaticResource Muted}, Dark={StaticResource MutedDark}}" />
+                </HorizontalStackLayout>
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
 </ContentView>

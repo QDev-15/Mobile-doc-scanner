@@ -17,9 +17,11 @@ public static class MauiProgram
 		Perf.Sink = line => Android.Util.Log.Info("DocScanPerf", line);
 		Perf.Log("startup: CreateMauiApp");
 		Perf.Log($"ads: LevelPlay app {LevelPlayConfig.AppKey}, test mode {LevelPlayConfig.TestMode}");
+#if DEBUG
 		// GAID thật máy đang gửi lên LevelPlay -- đối chiếu với ID đăng ký "test device" trên dashboard (đợt
 		// 2026-10-09: nghi Google Play Services cache ID cũ, không khớp ID hiện trong Cài đặt máy). Phải chạy
 		// ngoài main thread (GetAdvertisingIdInfo là lời gọi chặn, ném lỗi nếu gọi trên main thread).
+		// #if DEBUG: the real GAID must never reach logcat in a production/Play Store install (2026-10-13 review).
 		Task.Run(() =>
 		{
 			try
@@ -32,6 +34,7 @@ public static class MauiProgram
 				Perf.Log($"ads: GAID read failed: {ex.Message}");
 			}
 		});
+#endif
 
 		var builder = MauiApp.CreateBuilder();
 

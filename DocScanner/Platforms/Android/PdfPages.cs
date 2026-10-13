@@ -13,6 +13,7 @@ internal sealed class PdfPages : IDisposable
 	private readonly object _lock = new();
 	private readonly ParcelFileDescriptor _file;
 	private readonly PdfRenderer _renderer;
+	private bool _disposed;
 
 	public PdfPages(string path)
 	{
@@ -67,6 +68,12 @@ internal sealed class PdfPages : IDisposable
 	{
 		lock (_lock)
 		{
+			// Idempotent on purpose: PdfViewerPage disposes the same instance from two places on the "leaving for
+			// good" path (PdfScrollView.Clear -> SetPages(null) disposes its _pages field, then the page's own
+			// _pages.Dispose() right after -- same object). PdfRenderer.close() throws IllegalStateException
+			// ("Already closed") on a second call, so without this guard that path crashes every time.
+			if (_disposed) return;
+			_disposed = true;
 			_renderer.Close();
 			_file.Close();
 		}

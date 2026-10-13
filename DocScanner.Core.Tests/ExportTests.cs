@@ -183,6 +183,60 @@ public class ExportTests
         Assert.Equal(2, pdf.NumberOfPages);
     }
 
+    /// <summary>A page can be edited and re-rendered (a new <c>cropped_{revision}</c> file, the OLD one deleted once the
+    /// new one is saved -- see <see cref="CropRenderService.RenderAsync"/>) while an export of the same document is
+    /// already under way and has already read that very page's render path but not yet its bytes. That page must be
+    /// skipped, like an unreadable photo, not take down the whole multi-page export.</summary>
+    [Fact]
+    public async Task A_page_whose_render_vanishes_mid_export_is_skipped_not_fatal()
+    {
+        using var rig = new Rig();
+        DocumentRecord doc = await rig.DocWithPages(2);
+        IReadOnlyList<PageRecord> pages = rig.Store.Pages(doc.Id);
+        rig.Edit.SetFilter(doc.Id, pages[0].Id, PageColorMode.Color);
+        rig.Edit.SetFilter(doc.Id, pages[1].Id, PageColorMode.Color);
+        foreach (PageRecord p in rig.Store.Pages(doc.Id)) rig.Queue.EnqueueRender(doc.Id, p.Id);
+        await rig.Queue.WaitIdleAsync();
+        Assert.All(rig.Store.Pages(doc.Id), p => Assert.False(p.NeedsRender)); // both rendered before export starts
+
+        string secondPageFile = rig.Store.CroppedPath(doc.Id, rig.Store.Pages(doc.Id)[1]);
+        Assert.True(File.Exists(secondPageFile));
+
+        // Deletes page 2's render right after page 1's bytes are read, the same moment a concurrent re-render of
+        // page 2 would (the export never actually races a real render here; this just reproduces its one visible
+        // effect -- the file page 2's PdfPageSource points at is gone by the time its turn comes).
+        var images = new DeleteAfterFirstLoad(rig.Images, secondPageFile);
+        var export = new PdfExportService(rig.Store, rig.Queue, images);
+
+        PdfExportResult result = await export.ExportAsync(doc.Id, rig.OutPath());
+
+        Assert.Equal(1, result.PageCount);
+        Assert.Equal([2], result.SkippedPages);
+        using PdfDocument pdf = PdfDocument.Open(File.ReadAllBytes(result.Path));
+        Assert.Equal(1, pdf.NumberOfPages);
+    }
+
+    private sealed class DeleteAfterFirstLoad(IImageService inner, string pathToDeleteAfterFirstLoad) : IImageService
+    {
+        private bool _done;
+
+        public async Task<RgbImage> LoadRgbAsync(string path, int maxEdge, CancellationToken ct)
+        {
+            RgbImage result = await inner.LoadRgbAsync(path, maxEdge, ct);
+            if (!_done) { _done = true; try { File.Delete(pathToDeleteAfterFirstLoad); } catch (IOException) { } }
+            return result;
+        }
+
+        public Task<ImageInfo> CreateThumbAsync(string originalPath, string thumbPath, int thumbEdge, int userRotationDegrees, CancellationToken ct) =>
+            inner.CreateThumbAsync(originalPath, thumbPath, thumbEdge, userRotationDegrees, ct);
+        public Task CreateProxyAsync(string originalPath, string proxyPath, int proxyEdge, int orientation, CancellationToken ct) =>
+            inner.CreateProxyAsync(originalPath, proxyPath, proxyEdge, orientation, ct);
+        public Task<RgbImage> LoadRegionAsync(string originalPath, int x, int y, int width, int height, int sample, CancellationToken ct) =>
+            inner.LoadRegionAsync(originalPath, x, y, width, height, sample, ct);
+        public Task SaveJpegAsync(RgbImage image, string path, int quality, CancellationToken ct) =>
+            inner.SaveJpegAsync(image, path, quality, ct);
+    }
+
     [Fact]
     public async Task A_cancelled_export_leaves_no_file_behind()
     {

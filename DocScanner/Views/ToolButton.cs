@@ -63,8 +63,22 @@ public class ToolButton : ContentView
 		MinimumWidthRequest = 56;
 		BackgroundColor = Colors.Transparent;
 		UpdateColors();
-		if (Application.Current != null) Application.Current.RequestedThemeChanged += (_, _) => UpdateColors();
+		// Loaded/Unloaded, not a bare constructor subscription with no matching unsubscribe: every page using
+		// ToolButton is AddTransient, so a plain +=  here would root every past instance (and everything it
+		// closes over) in Application.Current for the app's whole lifetime.
+		// -= before += : MAUI does not guarantee Loaded/Unloaded fire strictly 1:1 (reparenting, Shell page
+		// caching, CollectionView reuse can raise Loaded again with no Unloaded in between); without this, a
+		// second Loaded would stack a duplicate subscription that the one matching Unloaded can't fully remove.
+		Loaded += (_, _) =>
+		{
+			if (Application.Current is not { } app) return;
+			app.RequestedThemeChanged -= OnThemeChanged;
+			app.RequestedThemeChanged += OnThemeChanged;
+		};
+		Unloaded += (_, _) => { if (Application.Current != null) Application.Current.RequestedThemeChanged -= OnThemeChanged; };
 	}
+
+	private void OnThemeChanged(object? sender, AppThemeChangedEventArgs e) => UpdateColors();
 
 	public string Icon { get => (string)GetValue(IconProperty); set => SetValue(IconProperty, value); }
 	public string Text { get => (string)GetValue(TextProperty); set => SetValue(TextProperty, value); }

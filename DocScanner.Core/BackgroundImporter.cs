@@ -152,51 +152,73 @@ public sealed class BackgroundImporter(ImportService import)
 
     private async Task WorkAsync()
     {
-        while (true)
+        try
         {
-            Batch batch;
-            lock (_lock)
+            while (true)
             {
-                if (!_queue.TryDequeue(out batch!))
+                Batch batch;
+                lock (_lock)
                 {
-                    _working = false;
-                    _idle.TrySetResult();
-                    return;
+                    // The empty-check and the _working reset must happen under the SAME lock acquisition: otherwise
+                    // a Start() call between this dequeue-fails check and the finally below (which re-acquires the
+                    // lock separately) would see _working still true, skip spawning a new worker, and leave its
+                    // freshly-enqueued batch stranded with nothing left to ever dequeue it.
+                    if (!_queue.TryDequeue(out batch!))
+                    {
+                        _working = false;
+                        _idle.TrySetResult();
+                        return;
+                    }
+                }
+
+                ImportResult? result;
+                bool dropped;
+                lock (_lock) dropped = batch.Dropped;
+                // Reported synchronously from the copy loop: a Progress<T> would post it and could land after the batch ended.
+                var progress = new ForwardProgress(done =>
+                {
+                    lock (_lock) batch.Done = done;
+                    Changed?.Invoke(batch.DocId);
+                });
+                try
+                {
+                    // A dropped batch runs with a cancelled token: FillAsync then only takes its placeholders away.
+                    result = await import.FillAsync(batch.DocId, batch.PageIds, batch.Sources, progress,
+                        dropped ? new CancellationToken(canceled: true) : batch.Cts.Token, new Observer(this, batch.DocId));
+                }
+                catch (Exception ex)
+                {
+                    // FillAsync handles per-photo failures itself; this keeps the worker alive for the other batches.
+                    result = new ImportResult(0, [new ImportFailure("", ex.Message)], Cancelled: false);
+                }
+
+                lock (_lock)
+                {
+                    DocState s = _docs[batch.DocId];
+                    s.Batches.Remove(batch);
+                    s.DoneInFinishedBatches += batch.Done;
+                    s.Failures.AddRange(result.Failures);
+                    foreach (string id in batch.PageIds) _copying.Remove(id);
+                    if (s.Batches.Count == 0 && s.Failures.Count == 0 && !s.Stopped) _docs.Remove(batch.DocId); // nothing to report
+                    batch.Cts.Dispose();
+                }
+                try { Changed?.Invoke(batch.DocId); }
+                catch (Exception ex)
+                {
+                    // A subscriber throwing here must never stall the worker: the rest of the queue still needs to run.
+                    Perf.Log("import: Changed subscriber threw: " + ex.Message);
                 }
             }
-
-            ImportResult? result;
-            bool dropped;
-            lock (_lock) dropped = batch.Dropped;
-            // Reported synchronously from the copy loop: a Progress<T> would post it and could land after the batch ended.
-            var progress = new ForwardProgress(done =>
-            {
-                lock (_lock) batch.Done = done;
-                Changed?.Invoke(batch.DocId);
-            });
-            try
-            {
-                // A dropped batch runs with a cancelled token: FillAsync then only takes its placeholders away.
-                result = await import.FillAsync(batch.DocId, batch.PageIds, batch.Sources, progress,
-                    dropped ? new CancellationToken(canceled: true) : batch.Cts.Token, new Observer(this, batch.DocId));
-            }
-            catch (Exception ex)
-            {
-                // FillAsync handles per-photo failures itself; this keeps the worker alive for the other batches.
-                result = new ImportResult(0, [new ImportFailure("", ex.Message)], Cancelled: false);
-            }
-
+        }
+        finally
+        {
+            // Reached both on the normal empty-queue return and on any unexpected exception: the worker is never
+            // stuck "working" forever, so Start() can always schedule a new one.
             lock (_lock)
             {
-                DocState s = _docs[batch.DocId];
-                s.Batches.Remove(batch);
-                s.DoneInFinishedBatches += batch.Done;
-                s.Failures.AddRange(result.Failures);
-                foreach (string id in batch.PageIds) _copying.Remove(id);
-                if (s.Batches.Count == 0 && s.Failures.Count == 0 && !s.Stopped) _docs.Remove(batch.DocId); // nothing to report
-                batch.Cts.Dispose();
+                _working = false;
+                _idle.TrySetResult();
             }
-            Changed?.Invoke(batch.DocId);
         }
     }
 

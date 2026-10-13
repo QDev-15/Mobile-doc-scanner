@@ -15,8 +15,31 @@ namespace DocScanner.Core;
 public sealed class DocumentStore(string root)
 {
     private const string DocFileName = "doc.json";
-    private readonly object _gate = new();
+
+    // Per-document locking (2026-10-13): a single global lock used to serialize EVERY document's Update/Get/List
+    // (plus synchronous file I/O while held), so the background pipeline and importer blocked on each other even
+    // when touching two completely unrelated documents. _cacheGate below is now scoped to just what is genuinely
+    // shared across ALL documents -- the _cache dictionary's own structure and the _docLocks dictionary's own
+    // structure -- while each document's actual content (its DocumentRecord's fields, its Pages list, its on-disk
+    // doc.json) is guarded by that one document's own lock object from _docLocks, so unrelated documents no longer
+    // block each other. Folders are a separate, fully independent concern (see #region Folders) and get their own
+    // lock for the same reason.
+    private readonly object _cacheGate = new();
     private readonly Dictionary<string, DocumentRecord> _cache = [];
+    private readonly Dictionary<string, object> _docLocks = [];
+
+    /// <summary>The lock object for one document's content + disk I/O. Every operation that reads or mutates a
+    /// DocumentRecord (including a plain Get/Pages) must hold this for the whole operation: the record and its
+    /// Pages list are shared, mutable, non-thread-safe objects, the same way they always were under the old
+    /// single global lock -- only the GRANULARITY changed, not the "always locked while touched" guarantee.</summary>
+    private object DocLock(string id)
+    {
+        lock (_cacheGate)
+        {
+            if (!_docLocks.TryGetValue(id, out object? l)) _docLocks[id] = l = new object();
+            return l;
+        }
+    }
 
     public string Root => root;
 
@@ -28,9 +51,9 @@ public sealed class DocumentStore(string root)
             Name = string.IsNullOrWhiteSpace(name) ? $"Tài liệu {DateTime.Now:dd-MM-yyyy HH:mm}" : name.Trim(),
             CreatedUtc = DateTime.UtcNow,
         };
-        lock (_gate)
+        lock (DocLock(doc.Id))
         {
-            _cache[doc.Id] = doc;
+            lock (_cacheGate) _cache[doc.Id] = doc;
             SaveLocked(doc);
         }
         return doc;
@@ -40,24 +63,23 @@ public sealed class DocumentStore(string root)
     /// than hiding every other document.</summary>
     public IReadOnlyList<DocumentRecord> List()
     {
-        lock (_gate)
+        if (!Directory.Exists(root)) return [];
+        var result = new List<DocumentRecord>();
+        foreach (string dir in Directory.EnumerateDirectories(root))
         {
-            if (!Directory.Exists(root)) return [];
-            var result = new List<DocumentRecord>();
-            foreach (string dir in Directory.EnumerateDirectories(root))
-            {
-                DocumentRecord? doc = GetLocked(Path.GetFileName(dir));
-                if (doc != null) result.Add(doc);
-            }
-            return result.OrderByDescending(d => d.CreatedUtc).ToList();
+            string id = Path.GetFileName(dir);
+            DocumentRecord? doc;
+            lock (DocLock(id)) doc = GetLocked(id);
+            if (doc != null) result.Add(doc);
         }
+        return result.OrderByDescending(d => d.CreatedUtc).ToList();
     }
 
     /// <summary>The shared in-memory document, read from disk on first use.</summary>
     public DocumentRecord? Get(string id)
     {
         CheckId(id);
-        lock (_gate) return GetLocked(id);
+        lock (DocLock(id)) return GetLocked(id);
     }
 
     /// <summary>Snapshot of a document's pages that is safe to enumerate while the background
@@ -65,15 +87,15 @@ public sealed class DocumentStore(string root)
     public IReadOnlyList<PageRecord> Pages(string docId)
     {
         CheckId(docId);
-        lock (_gate) return GetLocked(docId)?.Pages.ToList() ?? [];
+        lock (DocLock(docId)) return GetLocked(docId)?.Pages.ToList() ?? [];
     }
 
-    /// <summary>Applies <paramref name="mutate"/> to the document under the store lock and saves it.
+    /// <summary>Applies <paramref name="mutate"/> to the document under its own lock and saves it.
     /// Returns false when the document no longer exists (e.g. deleted while a job was queued).</summary>
     public bool Update(string docId, Action<DocumentRecord> mutate)
     {
         CheckId(docId);
-        lock (_gate)
+        lock (DocLock(docId))
         {
             DocumentRecord? doc = GetLocked(docId);
             if (doc == null) return false;
@@ -86,9 +108,15 @@ public sealed class DocumentStore(string root)
     public void Delete(string id)
     {
         CheckId(id);
-        lock (_gate)
+        lock (DocLock(id))
         {
-            _cache.Remove(id);
+            // Also drops this id's entry from _docLocks itself: otherwise every document ever created, even one
+            // deleted a moment later, keeps a permanent lock object alive in that dictionary for the life of the
+            // process. Safe to remove while still holding the lock: the `lock` statement above already captured
+            // this exact object reference, so Monitor.Exit on the way out targets it regardless of whether the
+            // dictionary still maps `id` to it; a caller that looks it up again afterwards gets a fresh object,
+            // which is fine since GetLocked(id) will find nothing on disk for a deleted document anyway.
+            lock (_cacheGate) { _cache.Remove(id); _docLocks.Remove(id); }
             string folder = DocumentFolder(id);
             if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
         }
@@ -98,7 +126,7 @@ public sealed class DocumentStore(string root)
     {
         CheckId(docId);
         CheckId(pageId);
-        lock (_gate)
+        lock (DocLock(docId))
         {
             DocumentRecord? doc = GetLocked(docId);
             if (doc == null) return;
@@ -111,18 +139,22 @@ public sealed class DocumentStore(string root)
 
     #region Folders
 
+    // Folders are a separate, independent concern from documents (never touch _cache/_docLocks), so they get
+    // their own lock: folder operations (mostly instant UI actions) must never queue up behind a background
+    // document operation's disk I/O, and vice versa.
+    private readonly object _folderGate = new();
     private const string FoldersFileName = "folders.json";
     private List<FolderRecord>? _folders;
 
     /// <summary>All folders, by name (the main screen lists them before the documents).</summary>
     public IReadOnlyList<FolderRecord> Folders()
     {
-        lock (_gate) return [.. FoldersLocked().OrderBy(f => f.Name, StringComparer.CurrentCultureIgnoreCase)];
+        lock (_folderGate) return [.. FoldersLocked().OrderBy(f => f.Name, StringComparer.CurrentCultureIgnoreCase)];
     }
 
     public FolderRecord? Folder(string id)
     {
-        lock (_gate) return FoldersLocked().FirstOrDefault(f => f.Id == id);
+        lock (_folderGate) return FoldersLocked().FirstOrDefault(f => f.Id == id);
     }
 
     /// <summary><paramref name="parentFolderId"/> null creates a top-level folder; otherwise it must already
@@ -130,7 +162,7 @@ public sealed class DocumentStore(string root)
     /// reach by navigating).</summary>
     public FolderRecord CreateFolder(string name, string? parentFolderId = null)
     {
-        lock (_gate)
+        lock (_folderGate)
         {
             if (parentFolderId != null && FoldersLocked().All(f => f.Id != parentFolderId)) parentFolderId = null;
             var folder = new FolderRecord
@@ -149,7 +181,7 @@ public sealed class DocumentStore(string root)
     /// <summary>Direct sub-folders of <paramref name="parentFolderId"/> (null = top level), by name.</summary>
     public IReadOnlyList<FolderRecord> ChildFolders(string? parentFolderId)
     {
-        lock (_gate)
+        lock (_folderGate)
             return [.. FoldersLocked().Where(f => f.ParentFolderId == parentFolderId).OrderBy(f => f.Name, StringComparer.CurrentCultureIgnoreCase)];
     }
 
@@ -157,7 +189,7 @@ public sealed class DocumentStore(string root)
     /// top-level folder). Used for breadcrumbs and to keep <see cref="MoveFolder"/> from creating a cycle.</summary>
     public IReadOnlyList<FolderRecord> Ancestors(string folderId)
     {
-        lock (_gate)
+        lock (_folderGate)
         {
             List<FolderRecord> all = FoldersLocked();
             var chain = new List<FolderRecord>();
@@ -180,7 +212,7 @@ public sealed class DocumentStore(string root)
     public bool MoveFolder(string folderId, string? newParentFolderId)
     {
         if (folderId == newParentFolderId) return false;
-        lock (_gate)
+        lock (_folderGate)
         {
             List<FolderRecord> all = FoldersLocked();
             FolderRecord? folder = all.FirstOrDefault(f => f.Id == folderId);
@@ -200,7 +232,7 @@ public sealed class DocumentStore(string root)
     public bool RenameFolder(string id, string name)
     {
         if (string.IsNullOrWhiteSpace(name)) return false;
-        lock (_gate)
+        lock (_folderGate)
         {
             FolderRecord? f = FoldersLocked().FirstOrDefault(x => x.Id == id);
             if (f == null) return false;
@@ -216,7 +248,7 @@ public sealed class DocumentStore(string root)
     public bool DeleteFolder(string id)
     {
         string? parent;
-        lock (_gate)
+        lock (_folderGate)
         {
             FolderRecord? folder = FoldersLocked().FirstOrDefault(f => f.Id == id);
             if (folder == null) return false;
@@ -308,7 +340,9 @@ public sealed class DocumentStore(string root)
     public bool SetOrder(string docId, IReadOnlyList<string> pageIds) =>
         Update(docId, d =>
         {
-            var byId = d.Pages.ToDictionary(p => p.Id);
+            // GroupBy().First(), not ToDictionary(): a corrupted doc.json with two PageRecords sharing an Id
+            // must not crash the reorder with an unhandled ArgumentException.
+            var byId = d.Pages.GroupBy(p => p.Id).ToDictionary(g => g.Key, g => g.First());
             var ordered = pageIds.Where(byId.ContainsKey).Distinct().Select(id => byId[id]).ToList();
             ordered.AddRange(d.Pages.Where(p => !ordered.Contains(p)));
             d.Pages.Clear();
@@ -321,7 +355,7 @@ public sealed class DocumentStore(string root)
     {
         CheckId(docId);
         CheckId(pageId);
-        lock (_gate)
+        lock (DocLock(docId))
         {
             DocumentRecord? doc = GetLocked(docId);
             int index = doc?.Pages.FindIndex(p => p.Id == pageId) ?? -1;
@@ -344,7 +378,7 @@ public sealed class DocumentStore(string root)
     /// <summary>Puts a trashed page back at its old position. False when its files are gone (trash emptied).</summary>
     public bool RestorePage(DeletedPage deleted)
     {
-        lock (_gate)
+        lock (DocLock(deleted.DocId))
         {
             DocumentRecord? doc = GetLocked(deleted.DocId);
             string trash = TrashFolder(deleted.DocId, deleted.Page.Id);
@@ -367,7 +401,7 @@ public sealed class DocumentStore(string root)
     /// start-up, before any import runs. Returns how many were removed.</summary>
     public int RemoveUnfinishedImports(string docId)
     {
-        lock (_gate)
+        lock (DocLock(docId))
         {
             DocumentRecord? doc = GetLocked(docId);
             if (doc == null) return 0;
@@ -387,7 +421,7 @@ public sealed class DocumentStore(string root)
     /// <summary>Permanently removes trashed pages (called when leaving the document, and at start-up).</summary>
     public void EmptyTrash(string docId)
     {
-        lock (_gate)
+        lock (DocLock(docId))
         {
             string folder = Path.Combine(DocumentFolder(docId), TrashName);
             try { if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true); }
@@ -429,12 +463,17 @@ public sealed class DocumentStore(string root)
     public string CroppedThumbPath(string docId, string pageId, int revision) =>
         Path.Combine(PageFolder(docId, pageId), $"cropped_thumb_{revision}.jpg");
 
+    /// <summary>Caller must already hold DocLock(id): that is what makes it safe for two different ids to run this
+    /// concurrently (each only ever touches _cache under _cacheGate for the instant of the dictionary access
+    /// itself) while still guaranteeing only one DocumentRecord instance per id ever gets created -- a second
+    /// caller for the SAME id blocks on DocLock(id) until the first one has already populated the cache entry,
+    /// never racing the disk read itself.</summary>
     private DocumentRecord? GetLocked(string id)
     {
-        if (_cache.TryGetValue(id, out DocumentRecord? cached)) return cached;
+        lock (_cacheGate) { if (_cache.TryGetValue(id, out DocumentRecord? cached)) return cached; }
         DocumentRecord? doc = TryRead(Path.Combine(DocumentFolder(id), DocFileName));
         if (doc == null || doc.Id != id) return null;
-        _cache[id] = doc;
+        lock (_cacheGate) _cache[id] = doc;
         return doc;
     }
 

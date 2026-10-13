@@ -25,6 +25,9 @@ public sealed class AndroidPdfPicker : IPdfPicker
 	// (usually already clean, vector-rendered text/graphics with no camera noise to compensate for).
 	private const int LongEdgePx = 3508;
 
+	// Same retry count as AndroidImageService's decoders: 2x, 4x, 8x downsample before giving up.
+	private const int MaxRenderRetries = 3;
+
 	private static TaskCompletionSource<AndroidUri?>? _pending;
 
 	public async Task<IReadOnlyList<ImportSource>> PickAsync()
@@ -82,12 +85,26 @@ public sealed class AndroidPdfPicker : IPdfPicker
 		PdfRenderer.Page page = renderer.OpenPage(index);
 		try
 		{
-			double scale = (double)LongEdgePx / Math.Max(page.Width, page.Height);
-			int w = Math.Max(1, (int)Math.Round(page.Width * scale)), h = Math.Max(1, (int)Math.Round(page.Height * scale));
-			using Bitmap bitmap = Bitmap.CreateBitmap(w, h, Bitmap.Config.Argb8888!)!;
-			bitmap.EraseColor(Android.Graphics.Color.White);
-			page.Render(bitmap, null, null, PdfRenderMode.ForDisplay);
-			SaveJpeg(bitmap, jpegPath);
+			int divisor = 1;
+			for (int attempt = 0; ; attempt++)
+			{
+				try
+				{
+					double scale = (double)LongEdgePx / divisor / Math.Max(page.Width, page.Height);
+					int w = Math.Max(1, (int)Math.Round(page.Width * scale)), h = Math.Max(1, (int)Math.Round(page.Height * scale));
+					using Bitmap bitmap = Bitmap.CreateBitmap(w, h, Bitmap.Config.Argb8888!)!;
+					bitmap.EraseColor(Android.Graphics.Color.White);
+					page.Render(bitmap, null, null, PdfRenderMode.ForDisplay);
+					SaveJpeg(bitmap, jpegPath);
+					return;
+				}
+				catch (Java.Lang.OutOfMemoryError) when (attempt < MaxRenderRetries)
+				{
+					// Low/mid-RAM device: shrink harder instead of crashing, same pattern as AndroidImageService.Decode.
+					divisor *= 2;
+					GC.Collect();
+				}
+			}
 		}
 		finally
 		{

@@ -10,6 +10,7 @@ public static class Icons
 	public const string AddPhoto = "";        // add_a_photo
 	public const string Gallery = "";         // photo_library
 	public const string Pdf = "";             // picture_as_pdf
+	public const string OpenPdf = "";         // file_open (mo PDF co san, khac icon Pdf/picture_as_pdf dung cho PDF da xuat)
 	public const string Share = "";           // share
 	public const string Delete = "";          // delete
 	public const string More = "";            // more_vert

@@ -38,6 +38,13 @@ public partial class ViewerPage : ContentPage
 	{
 		base.OnDisappearing();
 		_viewModel.Detach();
+#if ANDROID
+		// Frees the full-resolution bitmap (up to 4096px long edge, tens of MB) proactively instead of leaving it
+		// for the GC to eventually collect -- mirrors PdfViewerPage.OnNavigatedFrom's own proactive Dispose() for
+		// the same reason. Safe with ViewerViewModel.Detach() now clearing _shownPath: returning to this exact
+		// page redisplays the picture instead of finding "nothing changed" and leaving the view blank.
+		_host.Clear();
+#endif
 	}
 
 #if ANDROID

@@ -80,7 +80,10 @@ public partial class SignaturePage : ContentPage
 		if (_loaded) return;
 		_loaded = true;
 		_viewModel.Load();
-		await LoadPageAsync();
+		// async void: LoadPageAsync does real file I/O (SaveJpegAsync into the cache dir); an unhandled
+		// exception here (disk full, cache dir briefly unavailable) would otherwise crash the whole app.
+		try { await LoadPageAsync(); }
+		catch (Exception ex) { await DisplayAlertAsync("Không mở được trang", ex.Message, "OK"); }
 	}
 
 	protected override void OnDisappearing()
