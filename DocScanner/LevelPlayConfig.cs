@@ -1,18 +1,27 @@
 namespace DocScanner;
 
 /// <summary>
-/// Unity LevelPlay credentials -- the equivalent of the old, now-deleted AdsConfig for AdMob, much simpler because
-/// LevelPlay has no separate "test ad unit ID" concept: the same App Key / Ad Unit IDs below serve test
-/// creatives automatically on devices registered as a test device in the LevelPlay dashboard (Settings >
-/// Testing), and real ads everywhere else. There is nothing here that can accidentally ship a placeholder ID
-/// the way AdMob's old "REPLACE_ME" guard worked -- these are the owner's real credentials from their own
-/// LevelPlay dashboard (filled in 2026-10-08), used as-is in every build configuration.
+/// Unity LevelPlay settings for DEV builds (the default <c>AdsMode=Dev</c>, see DocScanner.csproj): the App Key (same in both modes)
+/// and the SANDBOX ad unit IDs. The production ad unit IDs live in <see cref="RealAdsConfig"/> and are used only by a build made
+/// with <c>-p:AdsMode=Pro</c>. Same split as PdfReader (LevelPlayConfig.cs / RealAdsConfig.cs / its AdsMode), so a build that is
+/// merely uploaded to a Play testing track can never request the real ad units and so can never cause an invalid-click strike.
+///
+/// <para>Sandbox ad units are separate ad units you create in the LevelPlay dashboard for this app (e.g. "DocScanner Banner
+/// Sandbox", "DocScanner Interstitial Sandbox"); paste their IDs below. Until then <see cref="HasSandboxIds"/> is false and
+/// <see cref="AdsMode"/> decides what a Dev build does (see there): Debug on your own phone keeps using the production units
+/// (the phone is a registered LevelPlay test device, so it gets test creatives), a Release build shows no ads at all.</para>
 /// </summary>
 public static class LevelPlayConfig
 {
     public const string AppKey = "289043a3d";
-    public const string BannerAdUnitId = "dc8xtbcrecuhnlop";
-    public const string InterstitialAdUnitId = "0syfvxfg425xbspt";
+
+    /// <summary>Sandbox banner ad unit ID (Dev mode). Empty until created in the LevelPlay dashboard.</summary>
+    public const string SandboxBannerAdUnitId = "";
+
+    /// <summary>Sandbox interstitial ad unit ID (Dev mode). Empty until created in the LevelPlay dashboard.</summary>
+    public const string SandboxInterstitialAdUnitId = "";
+
+    public static bool HasSandboxIds => SandboxBannerAdUnitId.Length > 0 && SandboxInterstitialAdUnitId.Length > 0;
 
     /// <summary>Ads master switch for this build, fed to <c>LevelPlayOptions.IsAdsEnabled</c>. True unless the build was
     /// made with <c>-p:AdsEnabled=false</c> (DocScanner.csproj defines ADS_DISABLED). Applies to every configuration.</summary>
@@ -23,8 +32,8 @@ public static class LevelPlayConfig
 #endif
 
     /// <summary>Turns on LevelPlay's own adapter debug logging (<c>LevelPlay.SetAdaptersDebug</c>). Debug builds
-    /// only, same Debug/Release split the old AdMob-era AdsConfig.UseTestAds used -- does not affect which ad
-    /// unit IDs are used, only how chatty the SDK's own logcat output is.</summary>
+    /// only -- does not affect which ad unit IDs are used (that is <see cref="AdsMode"/>), only how chatty the SDK's own
+    /// logcat output is.</summary>
 #if DEBUG
     public const bool TestMode = true;
 #else

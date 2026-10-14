@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Background of every system dialog (alert, text prompt, action sheet): rounded card like the app's own dialogs. The inset leaves
+     room around it for the window's elevation shadow (the inset also becomes the window padding, so content stays inside the card). -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:insetLeft="18dp"
+    android:insetTop="18dp"
+    android:insetRight="18dp"
+    android:insetBottom="18dp">
+    <shape android:shape="rectangle">
+        <solid android:color="@color/dialog_background" />
+        <corners android:radius="24dp" />
+    </shape>
+</inset>

@@ -14,7 +14,7 @@ namespace DocScanner.ViewModels;
 /// press also drags the selection onto a folder. Moving never reorders anything: documents are listed by creation time.
 /// </summary>
 public partial class HomeViewModel(DocumentStore store, ImportCoordinator importer, BackgroundImporter imports, PageIngestQueue queue,
-	ExportCoordinator exports, ILicenseService license, ProUpgrade proUpgrade)
+	ExportCoordinator exports, ILicenseService license, ProUpgrade proUpgrade, ActionMenu menu, AppDialog dialog)
 	: ObservableObject, IQueryAttributable
 {
 	private static bool _resumed;
@@ -217,14 +217,35 @@ public partial class HomeViewModel(DocumentStore store, ImportCoordinator import
 	/// <summary>Pick, then go straight into the new document (created in the folder being shown).</summary>
 	private async Task ImportIntoNewDocumentAsync(Func<Func<DocumentRecord>, Task<DocumentRecord?>> pick)
 	{
-		DocumentRecord? doc = await pick(() =>
+		// From the moment the user has chosen until the new document is on screen the main screen shows a "preparing" overlay
+		// (before it, the screen sat frozen and silent: creating the document, writing the placeholder pages and opening it).
+		void Show() => IsPreparing = true;
+		importer.Chosen += Show;
+		try
 		{
-			DocumentRecord created = store.Create();
-			if (_folderId != null) store.MoveToFolder([created.Id], _folderId);
-			return created;
-		});
-		if (doc != null) await OpenAsync(doc.Id);
+			DocumentRecord? doc = await pick(() =>
+			{
+				DocumentRecord created = store.Create();
+				if (_folderId != null) store.MoveToFolder([created.Id], _folderId);
+				return created;
+			});
+			if (doc != null)
+			{
+				Perf.Log("import: opening document");
+				await OpenAsync(doc.Id);
+				Perf.Log("import: document opened");
+			}
+		}
+		finally
+		{
+			importer.Chosen -= Show;
+			IsPreparing = false;
+		}
 	}
+
+	/// <summary>True while a freshly picked batch is being turned into a document (see <see cref="ImportIntoNewDocumentAsync"/>).</summary>
+	[ObservableProperty]
+	private bool isPreparing;
 
 	#endregion
 
@@ -252,7 +273,7 @@ public partial class HomeViewModel(DocumentStore store, ImportCoordinator import
 		string what = items.Count == 1
 			? $"\"{items[0].Name}\" cùng {store.Pages(items[0].Record.Id).Count} trang"
 			: $"{items.Count} tài liệu đã chọn";
-		bool ok = await Shell.Current.DisplayAlertAsync("Xoá tài liệu", $"Xoá {what}? Không thể hoàn tác.", "Xoá", "Giữ lại");
+		bool ok = await dialog.ConfirmAsync("Xoá tài liệu", $"Xoá {what}? Không thể hoàn tác.", "Xoá", "Giữ lại", destructive: true);
 		if (!ok) return;
 		foreach (DocumentItem item in items)
 		{
@@ -272,15 +293,15 @@ public partial class HomeViewModel(DocumentStore store, ImportCoordinator import
 			newFolder = "Tạo thư mục mới và chuyển vào", move = "Chuyển vào thư mục...", moveOut = "Chuyển ra ngoài thư mục", delete = "Xoá";
 		var actions = new List<string> { view, rename, export, share, select, newFolder, move };
 		if (item.Record.FolderId != null) actions.Add(moveOut);
-		string? choice = await Shell.Current.DisplayActionSheetAsync(item.Name, "Huỷ", delete, [.. actions]);
+		string? choice = await menu.ShowAsync(item.Name, "Huỷ", delete, actions);
 		switch (choice)
 		{
 			case view:
 				OpenDocument(item);
 				break;
 			case rename:
-				string? name = await Shell.Current.DisplayPromptAsync("Đổi tên tài liệu", "Tên mới:", "Lưu", "Huỷ",
-					initialValue: item.Name, maxLength: 120, keyboard: Keyboard.Text);
+				string? name = await dialog.PromptAsync("Đổi tên tài liệu", "", "Lưu", "Huỷ",
+					initial: item.Name, maxLength: 120);
 				if (name != null && store.Rename(item.Record.Id, name)) RefreshItem(item);
 				break;
 			case export:
@@ -335,12 +356,12 @@ public partial class HomeViewModel(DocumentStore store, ImportCoordinator import
 		const string rename = "Đổi tên thư mục", move = "Chuyển vào thư mục...", moveOut = "Chuyển ra ngoài thư mục", delete = "Xoá thư mục";
 		var actions = new List<string> { rename, move };
 		if (folder.Record.ParentFolderId != null) actions.Add(moveOut);
-		string? choice = await Shell.Current.DisplayActionSheetAsync(folder.Name, "Huỷ", delete, [.. actions]);
+		string? choice = await menu.ShowAsync(folder.Name, "Huỷ", delete, actions);
 		switch (choice)
 		{
 			case rename:
-				string? name = await Shell.Current.DisplayPromptAsync("Đổi tên thư mục", "Tên mới:", "Lưu", "Huỷ",
-					initialValue: folder.Name, maxLength: 80, keyboard: Keyboard.Text);
+				string? name = await dialog.PromptAsync("Đổi tên thư mục", "", "Lưu", "Huỷ",
+					initial: folder.Name, maxLength: 80);
 				if (name != null && store.RenameFolder(folder.Record.Id, name)) await RefreshAsync();
 				break;
 			case move:
@@ -352,8 +373,8 @@ public partial class HomeViewModel(DocumentStore store, ImportCoordinator import
 			case delete:
 				FolderRecord? parent = folder.Record.ParentFolderId == null ? null : store.Folder(folder.Record.ParentFolderId);
 				string destination = parent != null ? $"chuyển ra thư mục \"{parent.Name}\"" : "chuyển ra ngoài cùng";
-				bool ok = await Shell.Current.DisplayAlertAsync("Xoá thư mục",
-					$"Xoá thư mục \"{folder.Name}\"? Tài liệu và thư mục con bên trong được giữ lại, {destination}.", "Xoá", "Giữ lại");
+				bool ok = await dialog.ConfirmAsync("Xoá thư mục",
+					$"Xoá thư mục \"{folder.Name}\"? Tài liệu và thư mục con bên trong được giữ lại, {destination}.", "Xoá", "Giữ lại", destructive: true);
 				if (ok && store.DeleteFolder(folder.Record.Id)) await RefreshAsync();
 				break;
 		}
@@ -378,10 +399,10 @@ public partial class HomeViewModel(DocumentStore store, ImportCoordinator import
 		if (folder.Record.ParentFolderId != null) choices.Add(outside);
 		if (choices.Count == 0)
 		{
-			await Shell.Current.DisplayAlertAsync("Chuyển thư mục", "Không có thư mục nào khác để chuyển vào.", "OK");
+			await dialog.AlertAsync("Chuyển thư mục", "Không có thư mục nào khác để chuyển vào.");
 			return;
 		}
-		string? choice = await Shell.Current.DisplayActionSheetAsync($"Chuyển \"{folder.Name}\" vào thư mục", "Huỷ", null, [.. choices]);
+		string? choice = await menu.ShowAsync($"Chuyển \"{folder.Name}\" vào thư mục", "Huỷ", null, choices);
 		if (choice == null || choice == "Huỷ") return;
 		string? target = choice == outside ? null : labels.FirstOrDefault(kv => kv.Value == choice).Key?.Id;
 		if (target == null && choice != outside) return;
@@ -397,7 +418,7 @@ public partial class HomeViewModel(DocumentStore store, ImportCoordinator import
 		var labels = folders.ToDictionary(f => f, FolderPath);
 		var choices = labels.Values.OrderBy(s => s, StringComparer.CurrentCultureIgnoreCase).Append(create).ToList();
 		if (_folderId != null) choices.Add(outside);
-		string? choice = await Shell.Current.DisplayActionSheetAsync("Chuyển vào thư mục", "Huỷ", null, [.. choices]);
+		string? choice = await menu.ShowAsync("Chuyển vào thư mục", "Huỷ", null, choices);
 		if (choice == null || choice == "Huỷ") return;
 		if (choice == create)
 		{
@@ -415,8 +436,8 @@ public partial class HomeViewModel(DocumentStore store, ImportCoordinator import
 	/// folder, or at the top level), then moves the documents into it.</summary>
 	private async Task MoveIntoNewFolderAsync(IReadOnlyList<string> docIds)
 	{
-		string? name = await Shell.Current.DisplayPromptAsync("Thư mục mới", "Tên thư mục:", "Tạo", "Huỷ",
-			placeholder: "Ví dụ: Hợp đồng", maxLength: 80, keyboard: Keyboard.Text);
+		string? name = await dialog.PromptAsync("Thư mục mới", "", "Tạo", "Huỷ",
+			placeholder: "Tên thư mục, ví dụ: Hợp đồng", maxLength: 80);
 		if (string.IsNullOrWhiteSpace(name)) return;
 		FolderRecord folder = store.CreateFolder(name, _folderId);
 		store.MoveToFolder(docIds, folder.Id);
@@ -429,8 +450,8 @@ public partial class HomeViewModel(DocumentStore store, ImportCoordinator import
 	[RelayCommand]
 	private async Task NewFolderAsync()
 	{
-		string? name = await Shell.Current.DisplayPromptAsync("Thư mục mới", "Tên thư mục:", "Tạo", "Huỷ",
-			placeholder: "Ví dụ: Hợp đồng", maxLength: 80, keyboard: Keyboard.Text);
+		string? name = await dialog.PromptAsync("Thư mục mới", "", "Tạo", "Huỷ",
+			placeholder: "Tên thư mục, ví dụ: Hợp đồng", maxLength: 80);
 		if (string.IsNullOrWhiteSpace(name)) return;
 		store.CreateFolder(name, _folderId);
 		await RefreshAsync();
@@ -512,6 +533,8 @@ public partial class HomeViewModel(DocumentStore store, ImportCoordinator import
 	/// <summary>Back pressed: leave selection / search first.</summary>
 	public bool HandleBack()
 	{
+		if (dialog.Dismiss()) return true; // an open dialog or menu closes first, like the system ones used to
+		if (menu.Dismiss()) return true;
 		if (IsSelecting)
 		{
 			EndSelection();

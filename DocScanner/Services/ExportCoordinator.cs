@@ -80,7 +80,10 @@ public partial class ExportCoordinator(DocumentStore store, PdfExportService exp
 	{
 		if (_pendingDoc is not { } doc) return;
 		IsAskingName = false;
+		_pendingDoc = null;
 		string name = string.IsNullOrWhiteSpace(PdfNameInput) ? doc.Name : PdfNameInput.Trim();
+		// "baocao.pdf" typed with the extension would otherwise become "baocao.pdf.pdf".
+		if (name.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) && name.Length > 4) name = name[..^4].TrimEnd();
 		await RunExportAsync(doc, name);
 	}
 
@@ -115,14 +118,14 @@ public partial class ExportCoordinator(DocumentStore store, PdfExportService exp
 				summary += $"\nKhông tự lưu được vào Tải xuống ({ex.Message}); có thể lưu tay bên dưới.";
 			}
 		}
-		ShowResult(true, doc.Name, summary, result.Path);
+		ShowResult(true, "Đã xuất PDF", $"{doc.Name}\n{summary}", result.Path);
 	}
 
 	/// <summary>"Chia sẻ" from the dashboard's ⋮ menu (owner's request, 2026-10-13): straight to a temp file, no
 	/// name prompt and never kept in the export library (unlike <see cref="ExportAsync"/>/<see cref="RunExportAsync"/>)
-	/// -- a one-off hand-off to the share sheet, not a kept export, so the temp file is deleted again once sharing
-	/// is done (whether the user actually picked a target app or dismissed the sheet; either way Share.RequestAsync
-	/// has already returned by then, so the file is no longer needed).</summary>
+	/// -- a one-off hand-off to the share sheet, not a kept export. The temp file is cleaned up later
+	/// (<see cref="CleanupShareTemps"/>), not right after the share call: Share.RequestAsync returns when the chooser
+	/// opens, before the chosen app has read the file.</summary>
 	public async Task ShareDocumentAsync(string docId)
 	{
 		if (IsExporting || IsAskingName) return;
@@ -134,20 +137,56 @@ public partial class ExportCoordinator(DocumentStore store, PdfExportService exp
 			return;
 		}
 
-		string path = Path.Combine(FileSystem.CacheDirectory, $"share_{Guid.NewGuid():N}.pdf");
+		CleanupShareTemps(TimeSpan.FromMinutes(10)); // earlier hand-offs are long done by now
+		// One private folder per hand-off, the file inside named after the document: the receiving app shows/saves that name
+		// ("Hop dong.pdf"), not an internal "share_<guid>.pdf".
+		string shareDir = Path.Combine(FileSystem.CacheDirectory, ShareTempPrefix + Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(shareDir);
+		string path = Path.Combine(shareDir, PdfExportService.FileNameFor(doc.Name));
 		PdfExportResult? result = await RunCoreAsync(docId, path, "Không chia sẻ được");
-		if (result == null) return;
+		if (result == null)
+		{
+			try { Directory.Delete(shareDir, true); } catch (IOException) { }
+			return;
+		}
 		try
 		{
+			// NOT deleted here: on Android Share.RequestAsync returns as soon as the chooser is shown, not when the
+			// chosen app has finished reading the file, so deleting it now would hand that app a missing file.
+			// The temp file is removed by CleanupShareTemps on the next share and at the next app start.
 			await Share.Default.RequestAsync(new ShareFileRequest { Title = doc.Name, File = new ShareFile(result.Path, "application/pdf") });
 		}
 		catch (Exception ex)
 		{
 			ShowResult(false, "Không chia sẻ được", ex.Message);
+			try { Directory.Delete(shareDir, true); } catch (IOException) { /* sharing never started: nobody else will read it */ }
 		}
-		finally
+	}
+
+	private const string ShareTempPrefix = "share_";
+
+	/// <summary>Deletes the temporary PDFs made for "Chia sẻ" that are older than <paramref name="minAge"/>
+	/// (<see cref="TimeSpan.Zero"/> = all of them, used once at app start when no hand-off can be in progress).
+	/// Best effort: a file still held open by another app is simply left for the next cleanup.</summary>
+	public static void CleanupShareTemps(TimeSpan minAge)
+	{
+		try
 		{
-			try { File.Delete(result.Path); } catch (IOException) { /* best-effort cleanup of a temp file */ }
+			foreach (string entry in Directory.EnumerateFileSystemEntries(FileSystem.CacheDirectory, ShareTempPrefix + "*"))
+			{
+				try
+				{
+					if (DateTime.UtcNow - File.GetLastWriteTimeUtc(entry) < minAge) continue;
+					if (Directory.Exists(entry)) Directory.Delete(entry, true); // current layout: a folder per hand-off
+					else File.Delete(entry); // older builds left a bare share_<guid>.pdf
+				}
+				catch (IOException) { }
+				catch (UnauthorizedAccessException) { }
+			}
+		}
+		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DirectoryNotFoundException)
+		{
+			// no cache folder yet / not readable: nothing to clean
 		}
 	}
 

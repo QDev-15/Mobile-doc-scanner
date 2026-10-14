@@ -1155,64 +1155,66 @@ vậy cũng treo mãi theo, đúng như triệu chứng "ads đã hiện trướ
   bách bằng, nhưng nếu PdfReader cũng có `UnityLevelPlayProvider.cs` tương tự (chưa kiểm tra lại đợt này) thì nên
   áp cùng fix cho nhất quán -- việc này owner chưa yêu cầu, chỉ ghi lại để nhớ.
 
-### Việc làm dở dang: luồng xuất PDF mới + menu 3 chấm ở dashboard + bỏ menu từng trang (đợt 2026-10-13, CHƯA kiểm tra xong trên máy)
+### Luồng xuất PDF / menu ⋮ / hộp thoại / kéo thả trang / nhập ảnh (đợt 2026-10-13 → 14, ĐÃ XONG, đã test trên máy thật)
 
-Owner yêu cầu đổi hẳn luồng xuất PDF và thêm menu 3 chấm cho mỗi tài liệu ở màn chính. Đã code xong, **build
-sạch**, đã xác nhận MỘT PHẦN trên máy thật (xem "Đã xác nhận" dưới đây), nhưng **mất kết nối adb (wireless
-debugging bị tắt, có thể do khoá màn hình) giữa chừng lúc đang kiểm tra**, nên phần còn lại owner cần tự bấm thử.
+Mọi việc của đợt này đã code xong và kiểm tra trên Note 10+ (bản Debug); không còn việc dang dở ở mục này. Ghi lại trạng thái cuối và
+những điều đáng nhớ:
 
-**Luồng mới (yêu cầu gốc của owner):**
-Xuất PDF -> hỏi tên file (dialog bo góc + đổ bóng) -> xuất xong -> dialog kết quả thành công/thất bại (bo góc +
-đổ bóng; thành công có thêm nút Xem/Chia sẻ). Dashboard: mỗi tài liệu có nút 3 chấm mở menu Xem / Đổi tên / Xuất
-PDF / Chia sẻ (Chia sẻ = xuất PDF vào thư mục tạm rồi mở share sheet, xong thì xoá file tạm). Trong màn Xem (lưới
-trang), KHÔNG còn nút 3 chấm trên từng trang -- sắp xếp lại trang chỉ bằng cách nhấn giữ rồi kéo thả.
+- **Xuất PDF** (`Services/ExportCoordinator` + `Views/ExportOverlay`): hỏi tên (ô tên tự bật bàn phím, chọn sẵn chữ; gõ thừa ".pdf" tự bỏ) ->
+  tiến trình -> hộp thoại kết quả (biểu tượng tick xanh / "!" đỏ, "Xem" viền + "Chia sẻ" đặc + "Đóng" chữ). Đóng ô tên phải ẨN bàn phím
+  (`Unfocus` + `HideSoftInputAsync`), nếu không bàn phím còn mở làm co cửa sổ và đẩy hộp thoại kết quả lên, mất biểu tượng.
+- **Chia sẻ** từ menu ⋮: file tạm nằm trong `cache/share_<guid>/<tên tài liệu>.pdf` (người nhận thấy đúng tên tài liệu). KHÔNG xoá ngay sau
+  `Share.RequestAsync` (Android trả về khi bảng chọn app vừa hiện, app nhận chưa đọc xong); `ExportCoordinator.CleanupShareTemps` dọn ở lần
+  chia sẻ sau (cũ hơn 10 phút) và hết ở mỗi lần mở app (`MauiProgram`). Sau một lần chia sẻ, `cache/` CÒN thư mục `share_*` là ĐÚNG.
+- **Menu ⋮ và các hộp thoại ở màn chính** là bộ tự vẽ bo góc 20-24 + `Shadow`: `Services/ActionMenu` + `Views/ActionMenuOverlay` (menu chọn),
+  `Services/AppDialog` + `Views/AppDialogOverlay` (xác nhận / nhập tên / thông báo, có thể kèm biểu tượng), cùng đặt trên `HomePage`.
+  `HomeViewModel.HandleBack()` đóng dialog/menu trước. Nút chính tự co theo chữ (cột `Auto,*`, hộp 340dp) vì "Mua Pro · 26.000 ₫" từng bị cắt.
+- **MỌI hộp thoại hệ thống còn lại** (Shell `DisplayAlert` / `DisplayPrompt` / `DisplayActionSheet` ở các màn khác: tài liệu, PDF đã xuất,
+  Cài đặt, chữ ký, quyền camera...) được bo góc 24dp + đổ bóng + màu thẻ sáng/tối bằng THEME Android, không phải sửa từng chỗ gọi:
+  `Platforms/Android/Resources/drawable/dialog_background.xml`, `values/styles.xml` (`AppAlertDialog`, `AppDialogButton`,
+  `AppDialogThemeOverlay`), `values/colors.xml` + `values-night/colors.xml` (`dialog_*`), và `MainActivity.OnCreate` áp
+  `AppDialogThemeOverlay` lên theme (`alertDialogTheme`). Dialog hệ thống MỚI thêm sau này tự có kiểu này. Lưu ý: chữ nút phải đặt rõ
+  (`AppDialogButton`), nếu không nút hiện chữ gần đen trên nền tối.
+- **Lưới trang** (`Views/DocumentPage`): kéo thả dùng `CollectionView.CanReorderItems` (RecyclerView ItemTouchHelper: nhấn giữ nhấc trang,
+  các trang khác dịch chỗ có hoạt ảnh, thả = đặt vào), `ReorderCompleted` -> `DocumentViewModel.PagesReordered()` lưu thứ tự + nút Hoàn tác.
+  `DragGestureRecognizer`/`DropGestureRecognizer` cũ đã BỎ: khi Tap nằm ở phần tử con còn Drag ở khung ngoài thì nhấn giữ không bao giờ kích
+  hoạt (con ăn cú chạm xuống). Vuốt = Xoá + Hoàn tác, chạm trang = mở, không còn nút ⋮ trên từng trang. Icon "Nhập PDF" ở thanh công cụ
+  tài liệu dùng `Icons.OpenPdf` giống nút trên màn chính.
+- **Nhập ảnh / PDF / camera** tạo tài liệu mới: `ImportCoordinator.Chosen` bắn ngay khi người dùng chọn xong (picker nhận `Action? picked`);
+  `HomeViewModel.IsPreparing` bật lớp "Đang chuẩn bị tài liệu..." (spinner) cho tới khi tài liệu mới mở xong. Đo trên máy (3 ảnh): tạo tài
+  liệu ~0,1 s, chuyển sang màn tài liệu ~1,6 s (trước đây im lặng suốt thời gian này). Log: `adb logcat -s DocScanPerf | findstr import:`.
+- **Bài học nền tảng**: (1) trên Android đừng gắn `TapGestureRecognizer` cho phần tử lồng BÊN TRONG nội dung `SwipeView` rồi mong nó ăn cú chạm
+  (xem mục SwipeView ở trên); chạm trang trong `SwipeView` vẫn hoạt động khi Tap nằm trên chính phần tử gốc của `SwipeView`. (2) `dotnet build
+  -t:Install` đã XOÁ dữ liệu app một lần (mất tài liệu test); cài bản Debug bằng `dotnet build ... -p:EmbedAssembliesIntoApk=true
+  -p:AndroidUseSharedRuntime=false` rồi `adb install -r bin/Debug/net10.0-android/btk.docscanner-Signed.apk` thì GIỮ dữ liệu. (3) Test bằng adb trên
+  máy thật: kiểm `dumpsys window | grep mCurrentFocus` TRƯỚC mỗi cú chạm (một cú chạm đã rơi vào Zalo khi owner đang dùng máy); không chạm nếu
+  focus không phải `btk.docscanner` (hoặc picker/dialog của app đang test).
+- **Quảng cáo** (đã ghi ở các mục trước, nhắc lại điểm còn hiệu lực): banner báo `509 No fill` khi dashboard LevelPlay chỉ có 1 mạng (cần bật thêm
+  mạng); mở lại app dồn dập có thể làm `LevelPlay.Init` không callback tới ~3 phút (nghỉ ~30 s thì init trong ~3 s).
 
-**Code đã đổi:**
-- `Services/ExportCoordinator.cs`: viết lại hoàn toàn theo 3 trạng thái (`IsAskingName` / `IsExporting` /
-  `IsShowingResult`, gộp vào `ShowOverlay`). `ExportAsync` giờ chỉ mở dialog hỏi tên (không xuất ngay); xác nhận
-  tên mới thật sự chạy xuất (`RunExportAsync` -> `RunCoreAsync` dùng chung cho cả xuất thường lẫn `ShareDocumentAsync`
-  mới thêm). Xuất xong luôn gọi `ShowResult(...)` thay vì Toast cũ. `ShareDocumentAsync(docId)` xuất ra
-  `FileSystem.CacheDirectory/share_<guid>.pdf`, gọi `Share.Default.RequestAsync`, xoá file tạm trong `finally`.
-- `Core/Export/ExportLibrary.cs`: thêm `PathForName(name)` (như `NewPath` cũ nhưng dùng đúng tên owner gõ, không
-  gắn thêm mốc giờ, vẫn tự thêm " (2)"... nếu trùng tên).
-- `Views/ExportOverlay.xaml`: viết lại thành 3 khối trong 1 `Grid` (hỏi tên / đang xuất / kết quả), khối hỏi tên
-  và khối kết quả đều là `Border` bo góc (CornerRadius 20) + `Shadow` (Opacity 0.35, Radius 18).
-- `ViewModels/HomeViewModel.cs`: `DocumentMenuAsync` thêm 2 lựa chọn "Xem" và "Chia sẻ" vào menu 3 chấm có sẵn
-  (menu cũ đã có Đổi tên/Xuất PDF/Chọn nhiều/thư mục/Xoá từ trước).
-- `Views/HomePage.xaml`: nút 3 chấm của mỗi dòng tài liệu đổi cấu trúc 2 LẦN mới ra bản đúng -- xem mục riêng
-  "SwipeView nuốt tap của phần tử con" ngay dưới đây, vì đây là một phát hiện platform-level đáng nhớ riêng,
-  không chỉ là chi tiết của feature này.
-- `ViewModels/DocumentViewModel.cs` + `ViewModels/Items.cs` (`PageItem`): bỏ hẳn `ShowPageMenu`/`MenuCommand` của
-  từng trang. Kéo-thả (`DragStartingCommand`/`DropCommand`, logic `MovePage`/`DropOn` giữ nguyên không đổi) giờ là
-  cách DUY NHẤT để đổi thứ tự trang.
-- `Views/DocumentPage.xaml`: mỗi ô trang bọc trong `SwipeView` (vuốt = Xoá, theo đúng mẫu `SwipeItem` của
-  `HomePage`), bỏ hẳn khối Border 3 chấm 26x26 ở góc trên-phải từng ô.
+### Chữ ký từ ảnh có sẵn: giữ màu / xoá nền; chế độ AdsMode; số liệu dex + quyền (đợt 2026-10-14, ĐÃ XONG, đã test trên máy thật)
 
-**SwipeView nuốt tap của phần tử con lồng bên trong (phát hiện platform MAUI Android, không phải bug logic):**
-Lần đầu thêm nút 3 chấm làm cột thứ 5 NẰM TRONG Grid nội dung của `SwipeView` (dòng tài liệu ở HomePage vốn đã bọc
-trong `SwipeView` để vuốt-xoá) -- toạ độ đúng (kiểm bằng `uiautomator dump`), nhưng tap không có phản ứng gì.
-Test loại trừ: tap vào chỗ khác trong CÙNG dòng (vùng `OpenCommand` gốc, cũng nằm trong SwipeView) vẫn ăn bình
-thường -- vậy SwipeView tự nó bắt gesture tốt, chỉ riêng một `TapGestureRecognizer` MỚI gắn thêm vào phần tử con
-lồng bên trong mới bị nuốt mất, không hit-test tới. Thử cách 2: đưa nút 3 chấm ra làm sibling cùng cấp Z-order
-(đè lên trên) với `BoxView` trong suốt làm chỗ chừa trong Grid gốc -- tap chạy được, nhưng để lại một ô xám thừa
-hiển thị mãi (kể cả sau khi đóng menu). Cách đúng cuối cùng: bọc `SwipeView` và nút 3 chấm làm 2 CỘT riêng của
-MỘT Grid ngoài cùng (`ColumnDefinitions="*,46"`), tức là 2 anh em thật sự theo cấu trúc cây, không phải 1 cái lồng
-trong cái kia và cũng không phải đè Z-order -- hết cả 2 vấn đề (xác nhận bằng ảnh chụp không còn ô xám).
-**Bài học: trên Android, đừng gắn `TapGestureRecognizer` cho một phần tử lồng BÊN TRONG nội dung của `SwipeView`
--- tách nó ra làm cột/anh em riêng của `SwipeView`, đừng lồng và đừng chỉ đè Z-order (đè Z-order để lại vệt render
-thừa).**
-
-**Đã xác nhận trên máy thật (trước khi mất kết nối adb):**
-- Nút 3 chấm mở đúng menu đủ 9 mục: Xem / Đổi tên / Xuất PDF / Chia sẻ / Chọn nhiều / Tạo thư mục mới và chuyển
-  vào / Chuyển vào thư mục... / Xoá / Huỷ (ảnh `menu_check3.png`).
-- Dòng tài liệu không còn ô xám thừa sau khi sửa cấu trúc Grid (ảnh `row_fixed.png`).
-
-**CHƯA xác nhận trên máy (owner tự bấm thử khi rảnh, mất adb giữa chừng nên dừng ở đây):**
-- Bấm "Xuất PDF" từ menu 3 chấm -> dialog hỏi tên có hiện đúng, bo góc + đổ bóng không.
-- Xuất xong -> dialog kết quả có hiện đúng không (cả 2 nhánh: thành công có nút Xem/Chia sẻ, thất bại chỉ có Đóng).
-- Bấm "Chia sẻ" từ menu 3 chấm -> share sheet có mở đúng, file tạm trong cache có bị xoá sau khi chia sẻ xong không
-  (nên kiểm bằng `adb shell run-as btk.docscanner ls cache` sau khi thao tác xong, phải KHÔNG còn `share_*.pdf`).
-- Mở một tài liệu (Xem) -> lưới trang không còn nút 3 chấm nào, nhấn giữ + kéo thả vẫn đổi thứ tự đúng, vuốt một
-  trang vẫn xoá đúng (logic kéo-thả không đổi nhưng chưa bấm thử LẠI sau khi bỏ menu, đề phòng đụng tay nhầm).
-- `CLAUDE.md` mục này sẽ cập nhật tiếp khi có xác nhận; nếu owner thấy sai chỗ nào, chụp màn hình + mô tả thao
-  tác giống các lần trước để dễ tra log.
+- **Chữ ký từ ảnh** (nút "Chọn ảnh" ở màn Chữ ký) giờ hỏi kiểu dùng ảnh: **"Giữ nguyên ảnh màu"** (nguyên ảnh, không cắt gì),
+  **"Xoá nền, giữ màu mực"** (giấy trong suốt, mực giữ màu gốc, cắt sát nét ký) hoặc **"Mực một màu (như ký tay)"** (hành vi cũ). Lõi:
+  `DocScanner.Core/Signatures` (`SignatureImageMode`, `SignatureImageImport.ToPicture`, `SignatureInfo.IsPicture` mặc định false nên
+  `index.json` cũ vẫn đọc được, `SignatureLibrary.AddPicture` lưu 1 file RGBA PNG, `SignatureInkImage.Picture`, `Stamper` lấy mẫu màu theo
+  từng điểm có trọng số alpha để màu pixel trong suốt không lem vào mép) + `PngReader.DecodeRgba8` (Shared). Trên trang xám/đen trắng chữ ký
+  ảnh màu hiện theo mức xám của nó; trang 1-bit chỉ đen/trắng. Test: `DocScanner.Core.Tests/SignaturePictureTests.cs`. Đã thấy trên máy:
+  ảnh mẫu (mực xanh + dấu đỏ) giữ đúng màu ở cả hai chế độ, và trên trang bộ lọc "Màu".
+- **AdsMode** (giống PdfReader): thuộc tính MSBuild `AdsMode` (mặc định Dev, `-p:AdsMode=Pro` cho bản thật) -> hằng `ADS_MODE_PRO`.
+  `RealAdsConfig.cs` giữ ID quảng cáo thật; `LevelPlayConfig.cs` giữ AppKey + ID SANDBOX (còn trống); `AdsMode.Resolve()` chọn: Pro (và ID
+  thật đủ) -> ID thật; Dev có sandbox -> sandbox; Dev không có sandbox: bản **Debug** vẫn dùng ID thật (máy là test device đã đăng ký),
+  bản **Release không có ad** (để AAB đưa lên track test không bao giờ gọi ad thật). `-p:AdsEnabled=false` vẫn thắng tất cả. Bản lên Play
+  thật PHẢI build với `-p:AdsMode=Pro`, nếu không sẽ không có quảng cáo.
+- **Số liệu dex đo trên AAB Release sạch (2026-10-14, R8 + AndroidLinkMode=Full)**: 3 file dex, 17,0 MB, 137.631 method (trước khi tách
+  thư viện ads/bật R8: 5 file, 38,4 MB, 273.422 method). Vẫn > 10 MB nên Play còn gắn cảnh báo "DEX code optimization"; SDK .NET hiện tại
+  ép `-dontobfuscate` nên không có điểm obfuscation, chỉ thoát được bằng cách xuống < 10 MB. Cơ cấu code (theo insns): nền MAUI/AndroidX UI
+  25%, **chồng Unity Ads (adapter + SDK + protobuf + okhttp + work + datastore) 23,6%**, CameraX 12,9%, LevelPlay mediation 10,7%,
+  ironSource Ad Quality 6,0%, Tink 4,3%. Chồng Unity Ads cũng là nguồn của 3 quyền WAKE_LOCK / RECEIVE_BOOT_COMPLETED / FOREGROUND_SERVICE
+  (qua androidx.work); Tink đến từ androidx.security-crypto (MAUI Essentials).
+- **Quyền trong manifest gộp (AAB Release)**: CAMERA, INTERNET, ACCESS_NETWORK_STATE, `com.android.vending.BILLING`, `com.google.android.gms
+  .permission.AD_ID` (cần khai báo Advertising ID trên Play Console), ACCESS_ADSERVICES_ATTRIBUTION / _TOPICS (SDK quảng cáo), WAKE_LOCK,
+  RECEIVE_BOOT_COMPLETED, FOREGROUND_SERVICE (androidx.work), `<app>.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` (AndroidX nội bộ). targetSdk 36,
+  minSdk 26, `allowBackup=false`. Thành phần exported: MainActivity, ProfileInstallReceiver, SystemJobService, DiagnosticsReceiver (hai cái
+  sau của androidx.work, có permission bảo vệ).
+- **Căn chỉnh 16 KB (yêu cầu Play)**: đạt, cả 232 thư viện native (arm64-v8a + x86_64) trong AAB đều có segment LOAD align >= 16 KB.

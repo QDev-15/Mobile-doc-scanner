@@ -13,7 +13,7 @@
     <ContentPage.ToolbarItems>
         <ToolbarItem Text="Nhập PDF" Command="{Binding AddFromPdfCommand}" Order="Primary">
             <ToolbarItem.IconImageSource>
-                <FontImageSource FontFamily="Icons" Glyph="{x:Static views:Icons.Pdf}" Size="22"
+                <FontImageSource FontFamily="Icons" Glyph="{x:Static views:Icons.OpenPdf}" Size="22"
                                  Color="{AppThemeBinding Light={StaticResource OnSurface}, Dark={StaticResource OnSurfaceDark}}" />
             </ToolbarItem.IconImageSource>
         </ToolbarItem>
@@ -122,9 +122,9 @@
             </Label>
         </Grid>
 
-        <!-- Pages: 3 per row. Tap = edit; long-press and drag onto another page = move it there (the only way to
+        <!-- Pages: 3 per row. Tap = edit; long-press lifts a page, drag it and the others make room, drop = placed there (the only way to
              reorder: no per-page ⋮ menu anymore, owner's request 2026-10-13); swipe = delete. -->
-        <CollectionView Grid.Row="2" ItemsSource="{Binding Pages}" Margin="8,8,8,0">
+        <CollectionView x:Name="PagesGrid" Grid.Row="2" ItemsSource="{Binding Pages}" Margin="8,8,8,0" CanReorderItems="True" ReorderCompleted="OnReorderCompleted">
             <CollectionView.ItemsLayout>
                 <GridItemsLayout Orientation="Vertical" Span="3" HorizontalItemSpacing="8" VerticalItemSpacing="8" />
             </CollectionView.ItemsLayout>
@@ -143,21 +143,13 @@
                                 <RoundRectangle CornerRadius="10" />
                             </Border.StrokeShape>
                             <Border.GestureRecognizers>
-                                <DragGestureRecognizer CanDrag="True" DragStartingCommand="{Binding DragStartingCommand}" />
-                                <DropGestureRecognizer AllowDrop="True" DropCommand="{Binding DropCommand}" />
+                                <TapGestureRecognizer Command="{Binding OpenCommand}" />
                             </Border.GestureRecognizers>
                             <Grid HeightRequest="156">
-                            <Image Source="{Binding Thumb}" IsVisible="{Binding ShowThumb}" Aspect="AspectFit" Margin="4">
-                                <Image.GestureRecognizers>
-                                    <TapGestureRecognizer Command="{Binding OpenCommand}" />
-                                </Image.GestureRecognizers>
-                            </Image>
+                            <Image Source="{Binding Thumb}" IsVisible="{Binding ShowThumb}" Aspect="AspectFit" Margin="4" />
 
                             <!-- Placeholder until the photo has a thumbnail: its place in the document is kept from the start. -->
                             <Grid IsVisible="{Binding ShowPlaceholder}" BackgroundColor="{AppThemeBinding Light=#EFEBFA, Dark=#2A2638}">
-                                <Grid.GestureRecognizers>
-                                    <TapGestureRecognizer Command="{Binding OpenCommand}" />
-                                </Grid.GestureRecognizers>
                                 <VerticalStackLayout HorizontalOptions="Center" VerticalOptions="Center" Spacing="6">
                                     <ActivityIndicator IsRunning="{Binding ShowPlaceholder}" WidthRequest="22" HeightRequest="22"
                                                        Color="{StaticResource Primary}" />
@@ -168,9 +160,6 @@
 
                             <Label Text="{Binding StatusText}" IsVisible="{Binding IsFailed}" FontSize="11" Padding="6"
                                    HorizontalOptions="Center" VerticalOptions="Center" HorizontalTextAlignment="Center" TextColor="#D32F2F">
-                                <Label.GestureRecognizers>
-                                    <TapGestureRecognizer Command="{Binding OpenCommand}" />
-                                </Label.GestureRecognizers>
                             </Label>
 
                             <!-- Preparation progress: copy, thumbnail, screen copy, paper outline. -->

@@ -3,4 +3,10 @@
     <color name="colorPrimary">#5B4FE0</color>
     <color name="colorPrimaryDark">#3A2F99</color>
     <color name="colorAccent">#5B4FE0</color>
+
+    <!-- System dialogs, light mode (same values as CardBackground / OnSurface / Muted / Primary in Colors.xaml). -->
+    <color name="dialog_background">#FFFFFF</color>
+    <color name="dialog_text">#1C1B23</color>
+    <color name="dialog_text_muted">#8B86A0</color>
+    <color name="dialog_accent">#5B4FE0</color>
 </resources>

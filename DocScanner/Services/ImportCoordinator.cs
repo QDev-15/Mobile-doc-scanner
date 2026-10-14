@@ -13,6 +13,11 @@ public sealed class ImportCoordinator(BackgroundImporter importer, IPhotoPicker 
 {
 	private bool _picking;
 
+	/// <summary>Raised the moment the user has chosen what to import (photos picked / PDF chosen / photos taken), before the
+	/// slow part (copying, rendering PDF pages, creating the document, opening it). The main screen shows its "preparing"
+	/// overlay on this: without it the screen sat frozen and silent between the picker closing and the document opening.</summary>
+	public event Action? Chosen;
+
 	/// <summary>The document the picked photos are going into, or null when nothing was picked.</summary>
 	public async Task<DocumentRecord?> FromGalleryAsync(Func<DocumentRecord> document)
 	{
@@ -20,7 +25,7 @@ public sealed class ImportCoordinator(BackgroundImporter importer, IPhotoPicker 
 		_picking = true;
 		try
 		{
-			IReadOnlyList<ImportSource> sources = await picker.PickAsync();
+			IReadOnlyList<ImportSource> sources = await picker.PickAsync(OnChosen);
 			if (sources.Count == 0) return null;
 			return await CreateAndStartAsync(document, sources);
 		}
@@ -44,7 +49,7 @@ public sealed class ImportCoordinator(BackgroundImporter importer, IPhotoPicker 
 		_picking = true;
 		try
 		{
-			IReadOnlyList<ImportSource> sources = await pdfPicker.PickAsync();
+			IReadOnlyList<ImportSource> sources = await pdfPicker.PickAsync(OnChosen);
 			if (sources.Count == 0) return null;
 			return await CreateAndStartAsync(document, sources);
 		}
@@ -104,6 +109,7 @@ public sealed class ImportCoordinator(BackgroundImporter importer, IPhotoPicker 
 		if (photos.Count == 0) return null;
 
 		// The camera leaves its JPEGs in our cache; each is deleted once the document has its own copy.
+		OnChosen();
 		return await CreateAndStartAsync(document, photos.Select(Source).ToArray());
 	}
 
@@ -114,10 +120,18 @@ public sealed class ImportCoordinator(BackgroundImporter importer, IPhotoPicker 
 	private Task<DocumentRecord> CreateAndStartAsync(Func<DocumentRecord> document, IReadOnlyList<ImportSource> sources) =>
 		Task.Run(() =>
 		{
+			Perf.Log($"import: creating document for {sources.Count} photos");
 			DocumentRecord doc = document();
 			importer.Start(doc.Id, sources);
+			Perf.Log("import: document ready");
 			return doc;
 		});
+
+	private void OnChosen()
+	{
+		Perf.Log("import: chosen");
+		MainThread.BeginInvokeOnMainThread(() => Chosen?.Invoke());
+	}
 
 	private static ImportSource Source(string path) => new(Path.GetFileName(path), _ => Task.FromResult<Stream>(
 		new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete, 1 << 16, FileOptions.DeleteOnClose)));

@@ -24,7 +24,7 @@ public sealed class AndroidPhotoPicker : IPhotoPicker
 	private const int RequestCode = 0x5043;
 	private static TaskCompletionSource<IReadOnlyList<AndroidUri>>? _pending;
 
-	public async Task<IReadOnlyList<ImportSource>> PickAsync()
+	public async Task<IReadOnlyList<ImportSource>> PickAsync(Action? picked = null)
 	{
 		Activity activity = Platform.CurrentActivity ?? throw new InvalidOperationException("No activity.");
 		_pending?.TrySetResult([]); // a picker left open by an earlier call
@@ -33,6 +33,7 @@ public sealed class AndroidPhotoPicker : IPhotoPicker
 		activity.StartActivityForResult(CreateIntent(), RequestCode);
 
 		IReadOnlyList<AndroidUri> uris = await tcs.Task;
+		if (uris.Count > 0) picked?.Invoke();
 		ContentResolver resolver = Android.App.Application.Context.ContentResolver!;
 		return uris.Select((uri, i) => new ImportSource($"photo{i + 1}.jpg", _ => OpenAsync(resolver, uri))
 		{

@@ -6,6 +6,7 @@ namespace DocScanner.Services;
 public interface IPdfPicker
 {
 	/// <summary>One <see cref="ImportSource"/> per page, in page order; empty when the user backed out or the
-	/// file could not be read as a PDF.</summary>
-	Task<IReadOnlyList<ImportSource>> PickAsync();
+	/// file could not be read as a PDF. <paramref name="picked"/> is called as soon as a file was chosen, before the pages are
+	/// rendered (the slow part), so the caller can show progress right away.</summary>
+	Task<IReadOnlyList<ImportSource>> PickAsync(Action? picked = null);
 }

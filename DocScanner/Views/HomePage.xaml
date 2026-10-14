@@ -279,5 +279,26 @@
         <ads:AdBannerSurface Grid.Row="5" />
 
         <views:ExportOverlay Grid.RowSpan="6" />
+        <views:ActionMenuOverlay Grid.RowSpan="6" />
+        <views:AppDialogOverlay Grid.RowSpan="6" />
+
+        <!-- Between choosing photos / a PDF and the new document opening: a spinner instead of a frozen, silent screen. -->
+        <Grid Grid.RowSpan="6" IsVisible="{Binding IsPreparing}" BackgroundColor="#B3000000">
+            <Border HorizontalOptions="Center" VerticalOptions="Center" Padding="30,24" StrokeThickness="0"
+                    BackgroundColor="{AppThemeBinding Light={StaticResource CardBackground}, Dark={StaticResource CardBackgroundDark}}">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="24" />
+                </Border.StrokeShape>
+                <Border.Shadow>
+                    <Shadow Brush="Black" Opacity="0.35" Radius="18" Offset="0,8" />
+                </Border.Shadow>
+                <VerticalStackLayout Spacing="14" HorizontalOptions="Center">
+                    <ActivityIndicator IsRunning="{Binding IsPreparing}" WidthRequest="42" HeightRequest="42"
+                                       Color="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
+                    <Label Text="Đang chuẩn bị tài liệu..." FontSize="15" HorizontalTextAlignment="Center"
+                           TextColor="{AppThemeBinding Light={StaticResource OnSurface}, Dark={StaticResource OnSurfaceDark}}" />
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
     </Grid>
 </ContentPage>

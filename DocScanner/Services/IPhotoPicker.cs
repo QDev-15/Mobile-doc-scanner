@@ -6,6 +6,7 @@ namespace DocScanner.Services;
 /// lazily), so choosing 100 photos costs nothing until the background import copies them.</summary>
 public interface IPhotoPicker
 {
-	/// <summary>The chosen photos, in the picker's order; empty when the user backed out.</summary>
-	Task<IReadOnlyList<ImportSource>> PickAsync();
+	/// <summary>The chosen photos, in the picker's order; empty when the user backed out. <paramref name="picked"/> is called the
+	/// moment the user finished choosing (before any slow work), so the caller can show progress right away.</summary>
+	Task<IReadOnlyList<ImportSource>> PickAsync(Action? picked = null);
 }

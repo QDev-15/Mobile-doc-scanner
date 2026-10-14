@@ -122,6 +122,47 @@ public static class PngReader
         return new PngData(width, height, depth, colorType, idat.ToArray());
     }
 
+    /// <summary>Decodes an 8-bit RGBA PNG (colour type 6, any row filter) into its colours (<c>Rgb</c>, 3 bytes per pixel) and its
+    /// alpha channel (as a gray image), the form a colour signature is kept in (see <c>SignatureLibrary</c>).</summary>
+    public static (RgbImage Rgb, GrayImage Alpha) DecodeRgba8(byte[] png)
+    {
+        PngData p = Read(png);
+        if (p.ColorType != 6 || p.BitDepth != 8) throw new InvalidDataException($"Not an 8-bit RGBA PNG ({p.ColorType}, {p.BitDepth} bit).");
+        int w = p.Width, h = p.Height, stride = w * 4;
+        var raw = new byte[(stride + 1) * h];
+        using (var z = new System.IO.Compression.ZLibStream(new MemoryStream(p.ZlibData), System.IO.Compression.CompressionMode.Decompress))
+            z.ReadExactly(raw);
+        var px = new byte[stride * h]; // unfiltered RGBA rows
+        for (int y = 0; y < h; y++)
+        {
+            int filter = raw[y * (stride + 1)], src = y * (stride + 1) + 1, o = y * stride;
+            for (int i = 0; i < stride; i++)
+            {
+                int a = i >= 4 ? px[o + i - 4] : 0, b = y > 0 ? px[o - stride + i] : 0, c = i >= 4 && y > 0 ? px[o - stride + i - 4] : 0;
+                int v = raw[src + i];
+                px[o + i] = (byte)(filter switch
+                {
+                    0 => v,
+                    1 => v + a,
+                    2 => v + b,
+                    3 => v + ((a + b) >> 1),
+                    4 => v + Paeth(a, b, c),
+                    _ => throw new InvalidDataException($"Bad PNG row filter {filter}."),
+                });
+            }
+        }
+        var rgb = new RgbImage(w, h);
+        var alpha = new GrayImage(w, h);
+        for (int i = 0; i < w * h; i++)
+        {
+            rgb.Data[i * 3] = px[i * 4];
+            rgb.Data[i * 3 + 1] = px[i * 4 + 1];
+            rgb.Data[i * 3 + 2] = px[i * 4 + 2];
+            alpha.Data[i] = px[i * 4 + 3];
+        }
+        return (rgb, alpha);
+    }
+
     /// <summary>Decodes an 8-bit grayscale PNG (any row filter), e.g. a smooth black-and-white page.</summary>
     public static GrayImage DecodeGray8(byte[] png)
     {

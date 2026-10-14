@@ -106,12 +106,22 @@ public partial class SignatureViewModel(SignatureLibrary library, PageEditServic
 		return info;
 	}
 
-	/// <summary>Saves a signature picked from an existing picture on the device (a photo of a signature on
-	/// paper, or an already-cut-out signature image) - same ink-mask storage as a drawn one.</summary>
-	public SignatureInfo SaveFromImage(RgbImage source)
+	/// <summary>Saves a signature picked from an existing picture on the device (a photo of a signature on paper, or an
+	/// already-cut-out signature image). <see cref="SignatureImageMode.InkColor"/>: reduced to the chosen ink colour, same storage as a
+	/// drawn one; <see cref="SignatureImageMode.KeepOriginal"/>: the picture exactly as it is, in colour; <see cref="SignatureImageMode.RemoveBackground"/>:
+	/// paper cut out, ink keeps the colour it has in the picture.</summary>
+	public SignatureInfo SaveFromImage(RgbImage source, SignatureImageMode mode = SignatureImageMode.InkColor)
 	{
-		GrayImage mask = SignatureImageImport.ToMask(source);
-		SignatureInfo info = library.Add(mask, InkRgb);
+		SignatureInfo info;
+		if (mode == SignatureImageMode.InkColor)
+		{
+			info = library.Add(SignatureImageImport.ToMask(source), InkRgb);
+		}
+		else
+		{
+			SignatureImageImport.Picture picture = SignatureImageImport.ToPicture(source, mode);
+			info = library.AddPicture(picture.Colors, picture.Alpha);
+		}
 		Saved.Insert(0, Choice(info));
 		SavedCount = Saved.Count;
 		return info;

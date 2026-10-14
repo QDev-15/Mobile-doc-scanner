@@ -13,7 +13,6 @@ public partial class DocumentViewModel(DocumentStore store, ImportCoordinator im
 	: ObservableObject, IQueryAttributable
 {
 	private string? _docId;
-	private PageItem? _dragged;
 
 	/// <summary>The last undoable change (page moved or deleted); null when there is nothing to undo.</summary>
 	private Func<bool>? _undo;
@@ -144,7 +143,7 @@ public partial class DocumentViewModel(DocumentStore store, ImportCoordinator im
 	}
 
 	private PageItem NewItem(PageRecord p, int number) =>
-		new(p, number, ThumbFor, OpenPage, DeletePage, dragStart: x => _dragged = x, drop: DropOn,
+		new(p, number, ThumbFor, OpenPage, DeletePage,
 			copyProgress: imports.CopyProgress, preparing: queue.IsPreparing);
 
 	/// <summary>Rebuilds the tiles from the document (after a reorder or a deletion).</summary>
@@ -297,33 +296,27 @@ public partial class DocumentViewModel(DocumentStore store, ImportCoordinator im
 		UpdateProgress();
 	}
 
-	private void MovePage(PageItem item, int newIndex)
+	/// <summary>Called when the grid has finished a drag-reorder (CanReorderItems): the list <see cref="Pages"/> already holds the new
+	/// order (the tile was lifted, the others made room, it was dropped in place). Saves it, with an undo for the whole move.</summary>
+	public void PagesReordered()
 	{
 		if (_docId == null) return;
-		List<string> before = Pages.Select(p => p.Record.Id).ToList();
-		if (!store.MovePage(_docId, item.Record.Id, newIndex)) return;
 		string docId = _docId;
-		SetUndo($"Đã chuyển {item.Label}", () => store.SetOrder(docId, before));
-		int oldIndex = Pages.IndexOf(item);
-		int target = Math.Clamp(newIndex, 0, Pages.Count - 1);
-		if (oldIndex >= 0 && oldIndex != target) Pages.Move(oldIndex, target);
+		List<string> before = store.Pages(docId).Select(p => p.Id).ToList(); // the store still has the order from before the drag
+		List<string> after = Pages.Select(p => p.Record.Id).ToList();
+		if (before.SequenceEqual(after)) return; // picked up and put back where it was
+		if (!store.SetOrder(docId, after))
+		{
+			Reload(); // the list and the document disagree (e.g. a page was deleted meanwhile): show the document as it really is
+			return;
+		}
+		SetUndo("Đã đổi thứ tự trang", () => store.SetOrder(docId, before));
 		Renumber();
-		Sync(); // falls back to a rebuild if the store's order differs from the list's
 	}
 
 	private void Renumber()
 	{
 		for (int i = 0; i < Pages.Count; i++) Pages[i].SetNumber(i + 1);
-	}
-
-	/// <summary>Drag and drop: the dragged tile takes the place of the tile it is dropped on.</summary>
-	private void DropOn(PageItem target)
-	{
-		PageItem? dragged = _dragged;
-		_dragged = null;
-		if (dragged == null || dragged == target) return;
-		int to = Pages.IndexOf(target);
-		if (to >= 0) MovePage(dragged, to);
 	}
 
 	private void SetUndo(string text, Func<bool> undo)

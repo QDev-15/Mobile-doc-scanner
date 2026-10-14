@@ -50,10 +50,26 @@ public partial class SignaturePage : ContentPage
 			await using (FileStream file = File.Create(tempPath))
 				await stream.CopyToAsync(file);
 
+			// How the picture becomes a signature: the old behaviour (one ink colour, paper cut out) altered it; these let it keep its colours.
+			const string keep = "Giữ nguyên ảnh màu", cut = "Xoá nền, giữ màu mực", ink = "Mực một màu (như ký tay)";
+			string? choice = await DisplayActionSheetAsync("Dùng ảnh này làm chữ ký theo kiểu nào?", "Huỷ", null, keep, cut, ink);
+			SignatureImageMode? mode = choice switch
+			{
+				keep => SignatureImageMode.KeepOriginal,
+				cut => SignatureImageMode.RemoveBackground,
+				ink => SignatureImageMode.InkColor,
+				_ => null,
+			};
+			if (mode == null)
+			{
+				File.Delete(tempPath);
+				return; // backed out
+			}
+
 			RgbImage source = await _images.LoadRgbAsync(tempPath, PickedSignatureMaxEdge, default);
 			File.Delete(tempPath);
 
-			SignatureInfo info = _viewModel.SaveFromImage(source);
+			SignatureInfo info = _viewModel.SaveFromImage(source, mode.Value);
 			await AddAsync(info);
 		}
 		catch (Exception ex)

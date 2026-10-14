@@ -16,7 +16,9 @@ public static class MauiProgram
 		// Stage timings to logcat (adb logcat -s DocScanPerf): cheap, and the only way to see real speeds on a phone.
 		Perf.Sink = line => Android.Util.Log.Info("DocScanPerf", line);
 		Perf.Log("startup: CreateMauiApp");
-		Perf.Log($"ads: LevelPlay app {LevelPlayConfig.AppKey}, test mode {LevelPlayConfig.TestMode}");
+		// Ad units come from AdsMode (DocScanner.csproj AdsMode: Dev = sandbox / none, Pro = production), not from Debug/Release.
+		(string Banner, string Interstitial, string Source)? adUnits = AdsMode.Resolve();
+		Perf.Log($"ads: LevelPlay app {LevelPlayConfig.AppKey}, mode {(AdsMode.IsPro ? "Pro" : "Dev")}, units: {adUnits?.Source ?? "NONE (ads off for this build)"}, test mode {LevelPlayConfig.TestMode}");
 #if DEBUG
 		// GAID thật máy đang gửi lên LevelPlay -- đối chiếu với ID đăng ký "test device" trên dashboard (đợt
 		// 2026-10-09: nghi Google Play Services cache ID cũ, không khớp ID hiện trong Cài đặt máy). Phải chạy
@@ -50,12 +52,12 @@ public static class MauiProgram
 			// > this app's GAID), not anything read from code.
 			.UseLevelPlayAds(new LevelPlayOptions(
 				AppKey: LevelPlayConfig.AppKey,
-				BannerAdUnitId: LevelPlayConfig.BannerAdUnitId,
-				InterstitialAdUnitId: LevelPlayConfig.InterstitialAdUnitId,
+				BannerAdUnitId: adUnits?.Banner ?? "",
+				InterstitialAdUnitId: adUnits?.Interstitial ?? "",
 				TestMode: LevelPlayConfig.TestMode)
 			{
 				// MASTER ads switch for this build (DocScanner.csproj's AdsEnabled MSBuild property, default true).
-				IsAdsEnabled = LevelPlayConfig.IsAdsEnabled,
+				IsAdsEnabled = LevelPlayConfig.IsAdsEnabled && adUnits != null, // no units for this mode = no ads, never a guess
 			})
 			.ConfigureFonts(fonts =>
 			{
@@ -88,6 +90,8 @@ public static class MauiProgram
 		builder.Services.AddSingleton<PdfExportService>();
 		builder.Services.AddSingleton(_ => new ExportLibrary(Path.Combine(FileSystem.AppDataDirectory, "exports")));
 		builder.Services.AddSingleton<ExportCoordinator>();
+		builder.Services.AddSingleton<ActionMenu>();
+		builder.Services.AddSingleton<AppDialog>();
 		builder.Services.AddSingleton<ProUpgrade>();
 		builder.Services.AddSingleton<IDownloadsService, AndroidDownloadsService>();
 		builder.Services.AddSingleton<ILicenseService, LicenseService>();
@@ -126,6 +130,8 @@ public static class MauiProgram
 		// library, which creates the ad SDK lazily. A Pro user therefore never initialises the SDK, builds a banner or
 		// loads anything; resolved lazily instead, a banner page could win the race and start ads for a Pro user.
 		_ = app.Services.GetRequiredService<IAdsService>();
+		// Temp PDFs of earlier "Chia sẻ" hand-offs are deleted at start (no share can be in progress yet).
+		ExportCoordinator.CleanupShareTemps(TimeSpan.Zero);
 		Perf.Log("startup: MauiApp built");
 		return app;
 	}

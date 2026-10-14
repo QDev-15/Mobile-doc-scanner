@@ -30,7 +30,7 @@ public sealed class AndroidPdfPicker : IPdfPicker
 
 	private static TaskCompletionSource<AndroidUri?>? _pending;
 
-	public async Task<IReadOnlyList<ImportSource>> PickAsync()
+	public async Task<IReadOnlyList<ImportSource>> PickAsync(Action? picked = null)
 	{
 		Activity activity = Platform.CurrentActivity ?? throw new InvalidOperationException("No activity.");
 		_pending?.TrySetResult(null); // a picker left open by an earlier call
@@ -44,6 +44,7 @@ public sealed class AndroidPdfPicker : IPdfPicker
 
 		AndroidUri? uri = await tcs.Task;
 		if (uri == null) return [];
+		picked?.Invoke();
 
 		return await Task.Run(() => Rasterize(uri));
 	}

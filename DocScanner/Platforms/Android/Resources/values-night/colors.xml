@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- System dialogs, dark mode (CardBackgroundDark / OnSurfaceDark / MutedDark / PrimaryDark in Colors.xaml). -->
+    <color name="dialog_background">#221F2E</color>
+    <color name="dialog_text">#F2EFFA</color>
+    <color name="dialog_text_muted">#9D97B8</color>
+    <color name="dialog_accent">#B7ACFF</color>
+</resources>

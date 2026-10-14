@@ -23,4 +23,8 @@ public partial class DocumentPage : ContentPage
 		base.OnDisappearing();
 		_viewModel.Detach();
 	}
+
+	/// <summary>The grid has finished a drag-reorder (CanReorderItems: the picked-up page was lifted, the others moved aside and it was
+	/// dropped in place); the list already holds the new order, save it.</summary>
+	private void OnReorderCompleted(object? sender, EventArgs e) => _viewModel.PagesReordered();
 }

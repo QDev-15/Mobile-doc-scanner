@@ -73,6 +73,17 @@
 		<AndroidLinkMode>Full</AndroidLinkMode>
 	</PropertyGroup>
 
+	<!-- Ads MODE: which LevelPlay ad units a build requests, independent of Debug/Release and of APK vs AAB (same property and meaning
+	     as PdfReader's AdsMode). "Dev" (the default when not passed) = the SANDBOX units of LevelPlayConfig.cs, so an AAB uploaded to
+	     a Play testing track can never request the real ad units; with no sandbox units configured a Release build requests no ads
+	     (see AdsMode.cs). Only "Pro" = the production units of RealAdsConfig.cs, passed explicitly for the one build that really
+	     goes to Play:
+	       dotnet publish DocScanner.csproj -f net10.0-android -c Release -p:AndroidPackageFormat=aab -p:AdsMode=Pro -->
+	<PropertyGroup>
+		<AdsMode Condition="'$(AdsMode)' == ''">Dev</AdsMode>
+		<DefineConstants Condition="'$(AdsMode)' == 'Pro'">$(DefineConstants);ADS_MODE_PRO</DefineConstants>
+	</PropertyGroup>
+
 	<!-- Ads MASTER switch (AdsProviderOptions.IsAdsEnabled in DocScanner.AdsService; same property, same meaning as in
 	     PdfReader). Default true = ads on in EVERY build type (Debug, Release, APK, AAB). To build with ads fully off
 	     (the ad SDK is not even initialised, nothing loads), either pass -p:AdsEnabled=false:
