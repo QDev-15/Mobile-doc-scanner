@@ -1296,3 +1296,94 @@ nên làm trước tiên dù một mình chưa đủ. Phần còn thiếu (~1-3 
 năng camera trong app) hoặc mục 4 (đổi nhà quảng cáo) -- cả hai đều là quyết định sản phẩm/kinh doanh, **chưa tự
 quyết, để owner chọn hướng** (giữ đúng tinh thần quyết định của đợt đo dex trước: "chồng Unity Ads owner quyết định,
 tôi chưa đổi").
+
+### Mục 1 đã làm thật (máy/phiên khác), #3 thử và hoàn lại; dex 17,0 MB -> 11,7 MiB (đợt 2026-10-14 tiếp)
+Owner cho biết cả AdMob (tài khoản đã bị Google đóng) lẫn AppLovin (hiện không nhận đăng ký nhà xuất bản mới) đều
+không còn dùng được để đổi nhà quảng cáo -- đóng hẳn hướng "mục 4" ở phần đánh giá phía trên. Owner sau đó tự làm
+(hoặc qua một phiên Claude Code khác, trên một máy/thư mục khác -- `b037ce1 remove unity ads` trên `origin/master`,
+đã `git fetch`/merge vào đúng repo này, không cần copy tay) **mục 1 (bỏ Unity Ads network adapter)** và thử luôn
+**mục 3 (bỏ CameraX)** theo một cách hẹp hơn đề xuất ban đầu:
+
+- **Mục 1, đã làm, build xác nhận 0 lỗi (xem comment ngay trong `DocScanner.AdsService.LevelPlay.csproj`)**: bỏ
+  `com.unity3d.ads-mediation:unityads-adapter` + `com.unity3d.ads:unity-ads` + toàn bộ ~14 thư viện Java chỉ 2 gói
+  đó cần (`okhttp`, `androidx.work`, `datastore`, `protobuf-kotlin-lite`, `kotlinx-coroutines`, `webkit`,
+  `play-services-cronet`, `coherencelib`...). **Dex đo được: 17,0 MB -> 11,7 MiB, từ 3 file xuống 2 file, 137.631 ->
+  93.292 method.** Mất đúng 4 quyền: `WAKE_LOCK`, `RECEIVE_BOOT_COMPLETED`, `FOREGROUND_SERVICE` (cả 3 từ
+  `androidx.work`, như dự đoán) + thêm `ACCESS_ADSERVICES_TOPICS` (không nằm trong dự đoán ban đầu, nhiều khả năng
+  một trong các lib bị bỏ cũng khai nó). Quyền còn lại: CAMERA, INTERNET, ACCESS_NETWORK_STATE,
+  `com.android.vending.BILLING`, `AD_ID`, `ACCESS_ADSERVICES_ATTRIBUTION`. 230/230 thư viện native vẫn đạt căn
+  chỉnh 16 KB. **Vẫn còn dư ~1,7 MB trên ngưỡng 10 MB** -- 3 hướng còn lại trong bảng trên (Ad Quality ~0,9 MB, Tink
+  ~0,7 MB, CameraX) đều CHƯA đo số thật, chỉ ước lượng theo %.
+- **Mục 3, đã THỬ và HOÀN LẠI (không giữ trong code hiện tại, xác nhận: `DocScanner.csproj` vẫn còn đủ 3 gói
+  `Xamarin.AndroidX.Camera.{Camera2,Lifecycle,View}`)**: thử bỏ riêng gói `Xamarin.AndroidX.Camera.Video` (coi như
+  chỉ giữ phần chụp ảnh tĩnh của CameraX, bỏ phần quay video mà app không dùng tới) thay vì bỏ nguyên cả CameraX --
+  **làm hỏng AOT lúc build Release**, vì `Xamarin.AndroidX.Camera.View` tham chiếu thẳng tới `Camera.Video` (không
+  phải dependency tuỳ chọn). Hướng "cắt gọn một phần CameraX" này không khả thi theo cách đơn giản; muốn giảm phần
+  CameraX chỉ còn cách bỏ NGUYÊN CẢ CameraX (mất tính năng camera trong app, dùng camera hệ thống qua
+  `AndroidPhotoCapture.cs` đã có sẵn) như phương án ban đầu đã nêu, không có đường tắt "giữ phân nửa".
+- **Owner chọn GIỮ Ad Quality SDK** (không bỏ) -- ghi lại quyết định, không phải việc còn bỏ ngỏ.
+- Agent/phiên khác cũng đã tự commit 3 fix race condition của chính tôi ở mục review phía trên (`BackgroundImporter`,
+  `DocumentStore.Delete`, `CropViewModel`) vào commit `68f8933 add try catch` -- **không phải tôi chủ động commit**
+  (tôi đã cố tình để chúng ở dạng chưa commit, đúng quy tắc "không tự ý commit"); ghi lại để owner biết có một cơ chế
+  auto-commit nào đó đang hoạt động trên (các) máy đang dùng repo này, ngoài tầm kiểm soát của phiên Claude Code này.
+- **Việc còn lại, CHƯA làm trong phiên này (theo đúng bản ghi bàn giao owner đưa)**: build production thật bằng
+  `-p:AdsMode=Pro` để nộp Play (xem mục test dưới đây -- đã build 1 bản Pro để TEST trên máy, nhưng chưa phải bản
+  nộp Play chính thức, file `.aab` production cũ `release/DocScanner-1.1-versionCode3-production.aab` vẫn thiếu
+  nhiều thay đổi sau này, cần build lại); áp dụng bỏ Unity Ads adapter cho PdfReader (bên đó hiện VẪN CÒN đủ
+  unity-ads/unityads-adapter, chưa đụng tới); cập nhật README theo đúng Quy tắc vàng.
+
+### Test trên máy thật sau khi merge (Note 10+ SM-N975F, đợt 2026-10-14 tiếp, ĐÃ XONG)
+Owner cắm lại máy, cài qua `bundletool` (AAB hiện có không cài đè được lên bản debug cũ trên máy vì khác chữ ký --
+phải gỡ cài bản debug trước, owner đồng ý chấp nhận mất dữ liệu test cũ). Build Release (`AdsMode` mặc định Dev)
+trước, cài, test phần không liên quan ads; sau đó build thêm 1 bản `-p:AdsMode=Pro` riêng để test ads (ID thật --
+máy này đã là test device đăng ký trên dashboard LevelPlay nên bấm/xem an toàn), cài đè lên bản Dev (cùng khoá ký
+nên không cần gỡ cài lại, dữ liệu được giữ nguyên).
+
+**Phát hiện quan trọng trước khi test được ads**: bản Release + `AdsMode=Dev` (mặc định) log ra `units: NONE (ads off
+for this build)` -- vì `LevelPlayConfig.cs` (ID sandbox cho Dev) đang để trống, đúng theo thiết kế `AdsMode.Resolve()`
+đã ghi trước đây (Release + Dev + không có sandbox = tắt hẳn ads, tránh gọi nhầm ID thật). Muốn test ads trên bản
+Release bắt buộc phải dùng `-p:AdsMode=Pro`.
+
+**Kết quả test (tất cả PASS, không crash)**:
+- **Camera trong app**: dò mép trực tiếp qua ống kính đúng (khung xanh bám sát hộp giấy Double A thật), tự động chụp,
+  "1 trang / 2 trang (sách mở)" hoạt động.
+- **Pipeline sau chụp**: dò mép (`detector 970-1081ms`) -> nắn thẳng (`warp`) -> lọc đen trắng (`render filter
+  BlackWhite`) -> lưu, toàn bộ chạy đúng không lỗi, log thời gian bình thường.
+- **Luồng xuất PDF 3 trạng thái** (yêu cầu gốc của owner từ đầu phiên): dialog hỏi tên (bo góc, có tên mặc định) ->
+  xuất -> dialog "Đã xuất PDF" (2 trang, 708 KB, "Đã lưu vào Tải xuống/DocScanner") với nút Xem/Chia sẻ -- đúng y hệt
+  thiết kế yêu cầu.
+- **Xem PDF**: mở đúng, cuộn được cả 2 trang.
+- **Menu 3 chấm dashboard**: đủ 9 mục (Xem/Đổi tên/Xuất PDF/Chia sẻ/Chọn nhiều/Tạo thư mục/Chuyển vào thư mục/Xoá/Huỷ),
+  giao diện bottom-sheet mới (khác hẳn action sheet cũ) -- xác nhận không còn lỗi SwipeView nuốt tap đã sửa đợt trước.
+- **Chia sẻ**: mở đúng share sheet Android hệ thống với tên file PDF chính xác.
+- **Play Billing**: dialog "Nâng cấp Pro" lấy đúng giá thật từ Play (26.000đ) -- xác nhận billing kết nối được dù app
+  cài tay không qua Play. **Không bấm "Mua Pro"** (tránh phát sinh giao dịch tiền thật).
+- **Ads (bản `AdsMode=Pro`)**: `LevelPlay app 289043a3d, mode Pro, units: production` -> `init attempt #1` ->
+  `init success` (nhanh, ~0,5s, không cần tới nhánh retry/watchdog) -> **interstitial tải thành công, có doanh thu
+  thật** (`revenue: 1.04E-4`) -> banner "No fill" (`errorCode:509`, tình trạng thị trường ads, không phải bug) ->
+  retry/backoff tự chạy đúng (`banner retry #1 in 20s`). Màn hình không có ô xám/artifact nào dù banner chưa load được.
+- **Kiểm tra cập nhật Play**: báo lỗi `ERROR_APP_NOT_OWNED` -- ĐÚNG như dự kiến vì app cài tay (`bundletool
+  install-apks`) không phải qua Play Store, không phải bug, sẽ hoạt động bình thường khi cài thật từ Play.
+- **Không kiểm tra riêng được**: file tạm `share_*.pdf` có bị xoá sau "Chia sẻ" hay không -- bản Release không
+  debuggable (`run-as: package not debuggable`), không soi được thư mục cache riêng của app qua adb; logic code
+  (`finally { File.Delete(...) }`) đã review đúng ở đợt trước, chỉ là không tận mắt xác nhận lại qua filesystem lần
+  này.
+
+### Bản nộp Play cho giai đoạn 12 tester/14 ngày: PHẢI là bản Dev (không ads), không phải Pro (đợt 2026-10-14 tiếp)
+Owner hỏi đúng lúc: "nếu đẩy bản Pro có ads thật lên mà bị test bấm nhầm thì sao" -- trong lúc đang ở giai đoạn test
+bắt buộc của Play (12 tester, 14 ngày, yêu cầu cho tài khoản dev mới trước khi được publish production), **không
+được** để tester tiếp xúc với ads thật: tester bấm thử (dù vô tình) vẫn bị mạng quảng cáo tính là click, rủi ro y
+hệt vụ tài khoản AdMob từng bị cấm.
+
+- Dự án đã tự thiết kế sẵn đúng để tránh việc này (xem comment gốc trong `DocScanner.csproj`): build mặc định
+  (không truyền `-p:AdsMode=Pro`) dùng ID sandbox của `LevelPlayConfig.cs`; ID đó hiện ĐANG ĐỂ TRỐNG nên build mặc
+  định **tắt hẳn ads, không có quảng cáo nào cả** (xác nhận trực tiếp qua log lúc test ở mục trên: `units: NONE (ads
+  off for this build)`). Chỉ `-p:AdsMode=Pro` mới bật ads thật.
+- **Quyết định: bản nộp cho giai đoạn 12 tester/14 ngày là bản Dev (không ads)**, không phải bản Pro tôi build để
+  tự test ads ở mục trên. Đã copy bản Dev build lúc 11:38 (đúng code mới nhất, sau merge + 3 fix race condition)
+  vào `DocScanner/release/DocScanner-1.1-versionCode3-dev-noads-2026-10-14.aab` -- **đây là file nên tải lên Play
+  Console cho track test**. Sau khi qua giai đoạn test bắt buộc và sẵn sàng phát hành thật cho người dùng thật, mới
+  build lại bằng `-p:AdsMode=Pro` để có ads thật cho bản production cuối cùng.
+- `DocScanner/release/DocScanner-1.1-versionCode3-production.aab` (file cũ, 05/10) và
+  `DocScanner/release/btk.docscanner-Signed.aab` (còn cũ hơn) đều **lỗi thời, thiếu rất nhiều thay đổi sau này** --
+  không dùng file nào trong 2 file đó nữa, dù tên có chữ "production".
