@@ -1151,9 +1151,16 @@ vậy cũng treo mãi theo, đúng như triệu chứng "ads đã hiện trướ
   force-stop/relaunch dồn dập lúc test (không phải lỗi thường trực), nhưng retry/watchdog vẫn là một lớp bảo vệ
   hợp lý để giữ lại (chi phí gần như bằng 0, không ảnh hưởng đường chạy bình thường).
 - Build xác nhận `DocScanner.AdsService.LevelPlay` + `DocScanner.csproj` 0 lỗi.
-- **Chưa làm cho PdfReader**: PdfReader hiện dùng AdMob làm provider chính (không phải LevelPlay) nên không cấp
-  bách bằng, nhưng nếu PdfReader cũng có `UnityLevelPlayProvider.cs` tương tự (chưa kiểm tra lại đợt này) thì nên
-  áp cùng fix cho nhất quán -- việc này owner chưa yêu cầu, chỉ ghi lại để nhớ.
+- **Đính chính + đã làm cho PdfReader (đợt 2026-10-14)**: ghi chú trên nói "PdfReader dùng AdMob làm provider
+  chính" là SAI -- kiểm tra lại trực tiếp (`PdfReader.csproj` chỉ `ProjectReference` tới `AdsService.LevelPlay`,
+  `MauiProgram.cs` chỉ gọi `.UseLevelPlayAds(...)`, `.UseAdMobAds(...)` bị comment làm template) xác nhận PdfReader
+  cũng đang chạy LevelPlay y như DocScanner; tài khoản AdMob của DocScanner từng bị Google đóng (2026-10-08, xem
+  `PDFREADER-PLAN.md` mục "Cập nhật quảng cáo") chính là lý do cả 2 app đều không dùng AdMob làm provider thật --
+  AdMob chỉ còn lại như 1 project `AdsService.AdMob` dự phòng, chưa được tham chiếu. Vì vậy tài khoản AdMob bị cấm
+  lần nữa (owner báo 2026-10-14) KHÔNG ảnh hưởng ads thật của PdfReader. Đã áp cùng fix retry/watchdog `StartInit`
+  (y hệt DocScanner, xem mục "Ads LevelPlay: Init() đôi khi treo..." ở trên) vào
+  `Mobile-Pdf-reader/src/AdsService.LevelPlay/Internal/UnityLevelPlayProvider.cs` -- build xác nhận 0 lỗi, chưa cài
+  thử trên máy (owner chưa đưa máy qua repo này đợt này).
 
 ### Luồng xuất PDF / menu ⋮ / hộp thoại / kéo thả trang / nhập ảnh (đợt 2026-10-13 → 14, ĐÃ XONG, đã test trên máy thật)
 
@@ -1218,3 +1225,74 @@ những điều đáng nhớ:
   minSdk 26, `allowBackup=false`. Thành phần exported: MainActivity, ProfileInstallReceiver, SystemJobService, DiagnosticsReceiver (hai cái
   sau của androidx.work, có permission bảo vệ).
 - **Căn chỉnh 16 KB (yêu cầu Play)**: đạt, cả 232 thư viện native (arm64-v8a + x86_64) trong AAB đều có segment LOAD align >= 16 KB.
+
+### Review code đợt dex (043664e~1..804249d), 3 race condition thật tìm và sửa (đợt 2026-10-14)
+Owner nhờ review lại code vừa đổi ở đợt tách ads/bật R8/đo dex trước khi bàn tiếp hướng tối ưu. Cho agent nền chạy
+`code-review` trên diff 99 file; tìm 4 nghi vấn, xác minh lại từng cái trên code thật (không tin thẳng báo cáo agent)
+trước khi sửa -- 3/4 xác nhận đúng và đã sửa, 1/4 giữ nguyên vì khả năng không xảy ra thật. Build + `DocScanner.Core.Tests`
+205/205 xanh sau khi sửa, `DocScanner.csproj` build Android 0 lỗi. **Chưa commit** (theo quy tắc không tự ý commit).
+
+- **`BackgroundImporter.WorkAsync` reset `_working`/`_idle` 2 lần, có thể đụng worker mới (đã sửa)**: nhánh hàng đợi
+  rỗng tự `return` ngay trong 1 `lock`, nhưng khối `try/finally` bọc ngoài TRƯỚC ĐÓ cũng reset lại y hệt sau khi lock
+  đã nhả ra -- giữa 2 lần đó, một `Start()` khác có thể đã thấy `_working=false` và tạo worker MỚI + `_idle` MỚI, rồi bị
+  `finally` cũ đè lên (hoàn thành sớm `_idle` mới, xoá `_working` của worker mới đang chạy dở). Sửa: bỏ hẳn
+  `try/finally` bọc ngoài, tách thành 2 nhánh loại trừ lẫn nhau (hàng đợi rỗng tự reset rồi `return`; lỗi bất ngờ thật
+  sự thì `catch` riêng tự reset rồi `return`) -- chỉ đúng 1 trong 2 chạy mỗi lần gọi `WorkAsync`, không còn đụng nhau.
+- **`DocumentStore.Delete` xoá khoá tài liệu khỏi `_docLocks` TRƯỚC khi `Directory.Delete` chạy xong (đã sửa)**: giữa
+  lúc đó, `Get`/`Update` gọi `DocLock(id)` ở luồng khác thấy dictionary trống, tự tạo khoá MỚI không liên quan, chạy
+  tiếp không đợi xoá xong -- có thể đọc lại `doc.json` còn sót, ghi đè lại sau khi thư mục đã mất 1 phần, "hồi sinh"
+  tài liệu thành bản gãy (trang trỏ tới ảnh không còn tồn tại). Comment cũ lý giải sai ("GetLocked sẽ không thấy gì
+  trên đĩa" chỉ đúng SAU khi xoá xong, không đúng trong lúc đang xoá). Sửa: đổi thứ tự, xoá khoá/cache SAU
+  `Directory.Delete`, để luồng khác đang chờ đúng khoá cũ phải đợi tới khi xoá xong thật.
+- **`CropViewModel._detectingPageId` (kiểu `string?`) chỉ nhớ được 1 trang đang dò, trong khi comment của chính nó nói
+  thiết kế cho phép nhiều trang dò song song (đã sửa)**: lướt nhanh qua trang A (đang dò) → B (đang dò, `_detectingPageId`
+  bị ghi đè thành "B") → quay lại A (vẫn đang dò dở) thì điều kiện chặn trùng lặp đọc sai (`_detectingPageId` là "B" chứ
+  không phải "A"), bắn thêm 1 lần dò trùng cho đúng trang A đang chạy -- tốn CPU thừa + 2 lần ghi kết quả khung đua nhau,
+  không ai chắc bản nào thắng. Sửa: đổi `_detectingPageId` (string?) thành `_detectingPageIds` (`HashSet<string>`), thêm
+  khi bắt đầu / bỏ khi xong, đúng với ý đồ ban đầu của comment.
+- **Không sửa (đánh giá: khó xảy ra thật)**: `LicenseService` có `_appliedFromBilling` check-then-act không khoá giữa
+  `LoadCachedProAsync` (constructor, đọc SecureStorage) và `ApplyProAsync` (RefreshAsync/PurchaseProAsync) -- về lý
+  thuyết là race, nhưng cả 2 đường đều chạy từ continuation sau `await` trên UI thread của MAUI (constructor dựng DI
+  lúc khởi động app, RelayCommand từ ViewModel), mà continuation `await` trên Android MAUI quay lại đúng
+  SynchronizationContext của UI thread -- 1 luồng logic duy nhất, các khối code giữa 2 lần `await` chạy trọn vẹn
+  không xen kẽ được thật. Ghi lại để nhớ, không sửa vì chưa có bằng chứng nào cho thấy nó chạy ngoài UI thread.
+
+### Đánh giá + gợi ý tối ưu dex thêm, sau số liệu 17,0 MB / 137.631 method (đợt 2026-10-14)
+Owner đo xong bản sau khi tách ads + bật R8 (xem mục ngay phía trên: 17,0 MB, vẫn > ngưỡng 10 MB của Play). Dựa đúng
+cơ cấu % theo insns đã đo (không đoán thêm số mới): MAUI/AndroidX UI 25%, **chồng Unity Ads 23,6%**, CameraX 12,9%,
+LevelPlay mediation 10,7%, ironSource Ad Quality 6,0%, Tink 4,3%, còn lại ~17,5% (Play Billing, Play Core In-app
+Update, lõi Mono/interop, phần nhỏ rải rác).
+
+**Phép tính (áp % lên 17,0 MB, chỉ là ước lượng tuyến tính -- R8 có thể dọn thêm được khi bớt phụ thuộc, nên số thật
+có thể nhỉnh hơn mức tính tay này một chút):**
+- Chỉ bỏ chồng Unity Ads (23,6%) → ~13,0 MB. **Chưa đủ**, vẫn trên 10 MB.
+- + bỏ luôn Ad Quality (6,0%) → ~11,8 MB. **Vẫn chưa đủ.**
+- + bỏ luôn Tink/SecureStorage (4,3%) → ~11,1 MB. **Vẫn chưa đủ.**
+- Riêng 3 thứ trên cộng lại (33,9%) vẫn không đủ qua 10 MB -- phải động tới 1 trong 2 "đòn bẩy lớn" còn lại:
+  CameraX (12,9%) hoặc đổi hẳn nhà mạng quảng cáo.
+
+**4 hướng cụ thể, xếp theo mức độ an toàn:**
+1. **Bỏ `unityads-adapter` + `unity-ads` + 4 lib kéo theo riêng cho nó** (`androidx.datastore`/`datastore-core`,
+   `protobuf-kotlin-lite`, `coherencelib`) khỏi `DocScanner.AdsService.LevelPlay.csproj`. An toàn nhất: dashboard
+   LevelPlay của owner xác nhận CHỈ có mạng `ironSource` bật (đợt 2026-10-09), Unity Ads không được dùng tới. Mất 3
+   quyền manifest WAKE_LOCK/RECEIVE_BOOT_COMPLETED/FOREGROUND_SERVICE (đến từ `androidx.work` mà Unity Ads kéo theo).
+   Giá: sau này muốn bật mạng Unity Ads lại phải thêm lại. Ước tính còn ~13,0 MB -- MỘT MÌNH chưa đủ qua 10 MB.
+2. **Thử bỏ `adquality-sdk`**: rủi ro hơn hẳn mục 1 -- comment sẵn trong `.csproj` ghi rõ POM của `mediation-sdk`
+   khai nó là dependency BẮT BUỘC (không phải optional), nghĩa là `mediation-sdk` nhiều khả năng có code gọi thẳng
+   vào lớp của `adquality-sdk`; bỏ đi có thể vỡ ngay lúc `LevelPlay.Init()` (ClassNotFoundException, R8 không bắt
+   được lỗi runtime kiểu này). **Phải build thật + cài máy + test đủ luồng ads sau khi bỏ, không suy từ % mà dám làm.**
+3. **Bỏ CameraX, quay về camera hệ thống** (đã có sẵn `AndroidPhotoCapture.cs` làm dự phòng từ đợt 2026-09-27f, chỉ
+   cần đổi thành đường chính). Mất tính năng: xem trước dò mép trực tiếp qua ống kính + tự động chụp khi ổn định
+   (`CaptureStabilizer`) -- quay lại chụp 1 tấm bằng app Camera hệ thống rồi mới dò mép sau khi đã chụp xong. Đổi lại
+   ~12,9%. Đây là đánh đổi TRẢI NGHIỆM thật, không phải chỉ kỹ thuật.
+4. **Đổi hẳn nhà cung cấp ads từ LevelPlay sang AdMob**: `DocScanner.AdsService.AdMob` đã có sẵn, viết xong, chưa được
+   `DocScanner.csproj` tham chiếu (chỉ cần đổi 1 dòng `ProjectReference` + gọi `UseAdMobAds` thay `UseLevelPlayAds`
+   trong `MauiProgram.cs`). AdMob không cần tầng mediation LevelPlay + Unity Ads + Ad Quality + Tink đi kèm, nên có
+   thể nhẹ hơn hẳn (thay ~40% khối lượng ads hiện tại bằng một chồng AdMob riêng, chưa đo số thật). Đổi lại: đổi cả
+   nguồn doanh thu/waterfall, ảnh hưởng doanh thu quảng cáo thực tế, không chỉ là quyết định kỹ thuật.
+
+**Kết luận: không có cách nào một mình đủ qua ngưỡng 10 MB.** Mục 1 (bỏ Unity Ads adapter) gần như chắc chắn an toàn,
+nên làm trước tiên dù một mình chưa đủ. Phần còn thiếu (~1-3 MB tuỳ kịch bản) bắt buộc phải chọn giữa mục 3 (mất tính
+năng camera trong app) hoặc mục 4 (đổi nhà quảng cáo) -- cả hai đều là quyết định sản phẩm/kinh doanh, **chưa tự
+quyết, để owner chọn hướng** (giữ đúng tinh thần quyết định của đợt đo dex trước: "chồng Unity Ads owner quyết định,
+tôi chưa đổi").

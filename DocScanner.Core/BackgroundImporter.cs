@@ -152,25 +152,29 @@ public sealed class BackgroundImporter(ImportService import)
 
     private async Task WorkAsync()
     {
-        try
+        while (true)
         {
-            while (true)
+            Batch batch;
+            lock (_lock)
             {
-                Batch batch;
-                lock (_lock)
+                // The empty-check and the _working reset must happen under the SAME lock acquisition: otherwise
+                // a Start() call between this dequeue-fails check and some later reset would see _working still
+                // true, skip spawning a new worker, and leave its freshly-enqueued batch stranded with nothing
+                // left to ever dequeue it. For the same reason this is the ONLY place the empty-queue exit resets
+                // _working/_idle: a second reset from an enclosing try/finally (removed -- used to wrap the whole
+                // loop) would run AFTER this lock is released, by which point a racing Start() may already have
+                // spawned a brand-new worker with a brand-new _idle, and the stale finally would complete that
+                // new _idle early and clear _working out from under the still-running new worker.
+                if (!_queue.TryDequeue(out batch!))
                 {
-                    // The empty-check and the _working reset must happen under the SAME lock acquisition: otherwise
-                    // a Start() call between this dequeue-fails check and the finally below (which re-acquires the
-                    // lock separately) would see _working still true, skip spawning a new worker, and leave its
-                    // freshly-enqueued batch stranded with nothing left to ever dequeue it.
-                    if (!_queue.TryDequeue(out batch!))
-                    {
-                        _working = false;
-                        _idle.TrySetResult();
-                        return;
-                    }
+                    _working = false;
+                    _idle.TrySetResult();
+                    return;
                 }
+            }
 
+            try
+            {
                 ImportResult? result;
                 bool dropped;
                 lock (_lock) dropped = batch.Dropped;
@@ -209,15 +213,20 @@ public sealed class BackgroundImporter(ImportService import)
                     Perf.Log("import: Changed subscriber threw: " + ex.Message);
                 }
             }
-        }
-        finally
-        {
-            // Reached both on the normal empty-queue return and on any unexpected exception: the worker is never
-            // stuck "working" forever, so Start() can always schedule a new one.
-            lock (_lock)
+            catch (Exception ex)
             {
-                _working = false;
-                _idle.TrySetResult();
+                // Truly unexpected (FillAsync's own failures and Changed subscribers are already caught above):
+                // the worker must not be stuck "working" forever, so Start() can still schedule a new one. This is
+                // the ONLY other place _working/_idle get reset besides the empty-queue return above, and the two
+                // are mutually exclusive within one WorkAsync call (exactly one of them runs), so there is no
+                // double-reset race against a Start() that spawned a fresh worker in the meantime.
+                Perf.Log("import: worker crashed: " + ex.Message);
+                lock (_lock)
+                {
+                    _working = false;
+                    _idle.TrySetResult();
+                }
+                return;
             }
         }
     }

@@ -110,15 +110,20 @@ public sealed class DocumentStore(string root)
         CheckId(id);
         lock (DocLock(id))
         {
-            // Also drops this id's entry from _docLocks itself: otherwise every document ever created, even one
-            // deleted a moment later, keeps a permanent lock object alive in that dictionary for the life of the
-            // process. Safe to remove while still holding the lock: the `lock` statement above already captured
-            // this exact object reference, so Monitor.Exit on the way out targets it regardless of whether the
-            // dictionary still maps `id` to it; a caller that looks it up again afterwards gets a fresh object,
-            // which is fine since GetLocked(id) will find nothing on disk for a deleted document anyway.
-            lock (_cacheGate) { _cache.Remove(id); _docLocks.Remove(id); }
             string folder = DocumentFolder(id);
             if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
+
+            // Also drops this id's entry from _docLocks itself: otherwise every document ever created, even one
+            // deleted a moment later, keeps a permanent lock object alive in that dictionary for the life of the
+            // process. Must happen AFTER Directory.Delete, not before: removing it earlier lets a concurrent
+            // DocLock(id) call (from Get/Update/...) see no entry, create a fresh unrelated lock object, and
+            // proceed without waiting for this delete -- it could then re-read the still-present doc.json,
+            // re-populate _cache, and write it back after Directory.Delete runs, resurrecting a broken stub
+            // folder. Removing it last means any racing caller still gets THIS lock object and genuinely blocks
+            // until the delete (including Directory.Delete) is fully done; the `lock` statement above already
+            // captured the object reference, so Monitor.Exit on the way out is unaffected by removing it from
+            // the dictionary first.
+            lock (_cacheGate) { _cache.Remove(id); _docLocks.Remove(id); }
         }
     }
 

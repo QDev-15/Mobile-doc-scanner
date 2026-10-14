@@ -17,11 +17,13 @@ public partial class CropViewModel(DocumentStore store, CropDetectionService det
 	private string? _docId;
 	private string? _pageId;
 
-	/// <summary>Id of the page a DetectNowAsync call currently has in flight, or null; set only by that
-	/// call's own start and cleared only by its own completion (DocumentEdgeDetector.Detect is safe to run
-	/// concurrently for different pages - see its own doc comment - so this guards against re-launching a
-	/// duplicate detection for the SAME page, not against two different pages detecting at once).</summary>
-	private string? _detectingPageId;
+	/// <summary>Ids of pages a DetectNowAsync call currently has in flight; each id is added only by that call's
+	/// own start and removed only by its own completion (DocumentEdgeDetector.Detect is safe to run concurrently
+	/// for different pages - see its own doc comment - so this guards against re-launching a duplicate detection
+	/// for the SAME page while still allowing several different pages to detect at once - a plain nullable field
+	/// could only remember the single most recently started page and would wrongly re-launch an already-running
+	/// detection for an earlier page once the user swiped on to a second, third, ... page).</summary>
+	private readonly HashSet<string> _detectingPageIds = [];
 
 	[ObservableProperty]
 	private string title = "Cắt tài liệu";
@@ -151,7 +153,7 @@ public partial class CropViewModel(DocumentStore store, CropDetectionService det
 			Manual = false;
 			Status = "Đang dò mép giấy...";
 			// The pipeline normally does this in the background; only step in when it is not going to.
-			if (!queue.IsBusy(page.Id) && _detectingPageId != page.Id) _ = DetectNowAsync(page.Id, overrideManual: false);
+			if (!queue.IsBusy(page.Id) && !_detectingPageIds.Contains(page.Id)) _ = DetectNowAsync(page.Id, overrideManual: false);
 			return;
 		}
 
@@ -169,7 +171,7 @@ public partial class CropViewModel(DocumentStore store, CropDetectionService det
 	private async Task DetectNowAsync(string pageId, bool overrideManual)
 	{
 		if (_docId == null) return;
-		_detectingPageId = pageId;
+		_detectingPageIds.Add(pageId);
 		try
 		{
 			await detection.DetectAsync(_docId, pageId, default, overrideManual);
@@ -181,8 +183,7 @@ public partial class CropViewModel(DocumentStore store, CropDetectionService det
 		}
 		finally
 		{
-			// Only this call's own completion clears its own bookkeeping - never a different page's detection.
-			if (_detectingPageId == pageId) _detectingPageId = null;
+			_detectingPageIds.Remove(pageId);
 		}
 		Refresh();
 	}
