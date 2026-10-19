@@ -71,6 +71,12 @@
 		     full risk/reward writeup (same lesson applies here unchanged). -->
 		<AndroidLinkTool>r8</AndroidLinkTool>
 		<AndroidLinkMode>Full</AndroidLinkMode>
+
+		<!-- Obfuscation (Play Console "DEX code optimization" needs >= 25%; was 23% with -dontobfuscate injected by the
+		     SDK). Needs .NET Android SDK 36.1.118+ (older ones ignore this and keep -dontobfuscate). Build with
+		     build-release.ps1 (repo root): it downloads that SDK once into %LOCALAPPDATA%\android-sdk-36118 (not in git) and
+		     points dotnet at it. A build without it warns (see CopyReleaseAabWithVersion). -->
+		<AndroidR8ObfuscationMode>private-members</AndroidR8ObfuscationMode>
 	</PropertyGroup>
 
 	<!-- Ads MODE: which LevelPlay ad units a build requests, independent of Debug/Release and of APK vs AAB (same property and meaning
@@ -113,12 +119,33 @@
 		<ItemGroup>
 			<_SignedAab Include="$(PublishDir)*-Signed.aab" />
 		</ItemGroup>
+		<!-- One folder per build, release\DocScanner-<version>-<code>\, holding the bundle and the R8 mapping.txt of that
+		     exact build (every build makes a different mapping; keep the pair together). The mapping is also inside the
+		     .aab itself (BUNDLE-METADATA), so Play needs no separate upload; this copy is for manual upload / archive. -->
 		<PropertyGroup>
-			<_ReleaseAabName>DocScanner-$(ApplicationDisplayVersion)-$(ApplicationVersion).aab</_ReleaseAabName>
+			<_ReleaseName>DocScanner-$(ApplicationDisplayVersion)-$(ApplicationVersion)</_ReleaseName>
+			<_ReleaseDir>release\$(_ReleaseName)\</_ReleaseDir>
+			<_ReleaseMapping>$(OutputPath)mapping.txt</_ReleaseMapping>
 		</PropertyGroup>
-		<Copy SourceFiles="@(_SignedAab)" DestinationFiles="release\$(_ReleaseAabName)" Condition="'@(_SignedAab)' != ''" />
-		<Message Importance="high" Condition="'@(_SignedAab)' != ''" Text="Release AAB also copied to release\$(_ReleaseAabName)" />
+		<!-- Warn when the build was NOT obfuscated (SDK older than 36.1.118 injects -dontobfuscate): such an AAB would keep
+		     Play's "Obfuscation" below 25%. -->
+		<ReadLinesFromFile File="$(IntermediateOutputPath)proguard\proguard_xamarin.cfg" Condition="Exists('$(IntermediateOutputPath)proguard\proguard_xamarin.cfg')">
+			<Output TaskParameter="Lines" ItemName="_ProguardXamarinLine" />
+		</ReadLinesFromFile>
+		<ItemGroup>
+			<_NoObfuscationLine Include="@(_ProguardXamarinLine)" Condition="'%(Identity)' == '-dontobfuscate'" />
+		</ItemGroup>
+		<Warning Condition="'@(_NoObfuscationLine)' != ''" Text="This build is NOT obfuscated (SDK without AndroidR8ObfuscationMode). Use build-release.ps1 for any AAB that goes to Google Play." />
+		<MakeDir Directories="$(_ReleaseDir)" Condition="'@(_SignedAab)' != ''" />
+		<Copy SourceFiles="@(_SignedAab)" DestinationFiles="$(_ReleaseDir)$(_ReleaseName).aab" Condition="'@(_SignedAab)' != ''" />
+		<Copy SourceFiles="$(_ReleaseMapping)" DestinationFiles="$(_ReleaseDir)mapping.txt" Condition="'@(_SignedAab)' != '' AND Exists('$(_ReleaseMapping)')" />
+		<Message Importance="high" Condition="'@(_SignedAab)' != ''" Text="Release build copied to $(_ReleaseDir) (aab + mapping.txt)" />
 	</Target>
+	<ItemGroup Condition="'$(Configuration)' == 'Release'">
+		<!-- Extra R8 keep rules needed by obfuscation (see the file). -->
+		<ProguardConfiguration Include="proguard.cfg" />
+	</ItemGroup>
+
 	<ItemGroup>
 		<!-- App Icon -->
 		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" ForegroundScale="1" Color="#5B4FE0" />
