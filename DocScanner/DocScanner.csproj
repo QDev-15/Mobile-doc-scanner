@@ -35,7 +35,7 @@
 		     was consumed by the Internal testing upload, so Play rejects it on any other track/release ("Version
 		     code 1 has already been used"): bumped to 2, versionName stays 1.0 (still the first public version). -->
 		<ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
-		<ApplicationVersion>3</ApplicationVersion>
+		<ApplicationVersion>4</ApplicationVersion>
 
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">26.0</SupportedOSPlatformVersion>
 	</PropertyGroup>
