@@ -5,6 +5,7 @@ public partial class AboutPage : ContentPage
 {
 	public const string SupportEmail = "nguyenquynhvp.ictu@gmail.com";
 	public const string SupportPhone = "0988632841";
+	public const string PrivacyPolicyUrl = "https://sites.google.com/view/docscanne/home";
 
 	public AboutPage()
 	{
@@ -23,5 +24,11 @@ public partial class AboutPage : ContentPage
 	{
 		try { await Launcher.Default.OpenAsync($"tel:{SupportPhone}"); }
 		catch (Exception) { await Clipboard.Default.SetTextAsync(SupportPhone); await DisplayAlertAsync("Điện thoại", "Đã chép số điện thoại.", "OK"); }
+	}
+
+	private async void OnPrivacyPolicy(object? sender, TappedEventArgs e)
+	{
+		try { await Launcher.Default.OpenAsync(PrivacyPolicyUrl); }
+		catch (Exception) { await Clipboard.Default.SetTextAsync(PrivacyPolicyUrl); await DisplayAlertAsync("Chính sách quyền riêng tư", "Đã chép đường dẫn.", "OK"); }
 	}
 }

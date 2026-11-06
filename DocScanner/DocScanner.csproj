@@ -35,7 +35,7 @@
 		     was consumed by the Internal testing upload, so Play rejects it on any other track/release ("Version
 		     code 1 has already been used"): bumped to 2, versionName stays 1.0 (still the first public version). -->
 		<ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
-		<ApplicationVersion>4</ApplicationVersion>
+		<ApplicationVersion>5</ApplicationVersion>
 
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">26.0</SupportedOSPlatformVersion>
 	</PropertyGroup>
@@ -53,7 +53,7 @@
 
 	<PropertyGroup Condition="'$(Configuration)' == 'Release'">
 		<AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
-		<EnableLLVM>true</EnableLLVM>
+		<EnableLLVM>false</EnableLLVM>
 
 		<!-- R8 code shrinking for the Java/Kotlin side (AndroidX, Play Services, ML Kit, the Unity LevelPlay ads
 		     SDK and its full Unity Ads network adapter, ...) and .NET/C# IL trimming, same two-lever fix just
@@ -97,7 +97,7 @@
 	     or change the default on the next line. Test/demo ads are served by the ad network itself to registered test
 	     devices, so nothing here concerns them. -->
 	<PropertyGroup>
-		<AdsEnabled Condition="'$(AdsEnabled)' == ''">true</AdsEnabled>
+		<AdsEnabled Condition="'$(AdsEnabled)' == ''">false</AdsEnabled>
 		<DefineConstants Condition="'$(AdsEnabled)' == 'false'">$(DefineConstants);ADS_DISABLED</DefineConstants>
 	</PropertyGroup>
 
